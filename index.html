@@ -23,21 +23,24 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 .act{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px}
 .act input[type=number],.act input.u{min-height:32px;width:90px;padding:4px 6px}.act .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center;grid-column:2}
 .act button{min-height:32px;padding:4px 10px}.gatebox{border-left:4px solid var(--warn)}
+.trays{display:grid;grid-template-columns:repeat(auto-fill,minmax(14px,1fr));gap:2px;margin:8px 0}.tr{aspect-ratio:1;border:1px solid var(--line);border-radius:2px}.tr.s{background:var(--acc);border-color:var(--acc)}.tr.d{background:var(--warn);border-color:var(--warn)}.sw{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin:0 4px 0 12px}
 </style></head><body><main>
 <h1>Ngapori Propagation Engine</h1>
-<p class="sub">Pick a crop, enter the planting date (DOB) and choose the planting location. The engine fills in the propagation start date, trays per wave, seed, bed assignment and propagation location, and tracks the activities.</p>
+<p class="sub">Pick a crop, enter the planting date (DOB), choose the planting location and the number of waves. The engine fills in the propagation start date, trays per wave, seed, bed assignment and propagation location, and tracks the activities.</p>
 <div class="note hidden" id="cfg">Set <code>API_URL</code> at the top of this file to your deployed Apps Script web app URL (see README).</div>
 <div class="note hidden" id="err"></div>
 <section class="card"><div class="form">
 <label>Crop<select id="crop"></select></label>
 <label>Planting date (DOB)<input type="date" id="dob"></label>
 <label>Planting / transplant location<select id="plat"></select></label>
+<label>Number of waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
 </div><details><summary>Optional adjustments</summary><div class="form">
 <label>Plan date<select id="pdate"></select></label>
-<label>Waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
 <label>Days between waves<input type="number" id="gap" min="1" placeholder="from plan"></label>
 <label>Days before DOB<input type="number" id="lead" min="0" placeholder="from parameters"></label>
-</div></details><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
+</div></details><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
+<section class="card"><h2>Propagation room · Bay 3 benches</h2><div class="row"><label>Day shown<input type="date" id="rday"></label><label>Sq ft per tray (estimate)<input type="number" id="rsq" step="0.05" min="0.5" value="1.55"></label></div><div id="roomv"></div>
+<p class="k">Bay 3 bench limit is 800 sq ft (Infra_Field). The workbook's own tray figures work out to about 1.5 to 2.3 sq ft per tray, so change the footprint to match your trays. Green = saved runs, orange = the plan you are drafting.</p></section>
 <div id="out"></div>
 <section class="card hidden" id="gate"><h2>Activities</h2>
 <p class="k">Assign activities from the reference list. Post-transplant (ACT-607) and pre-sowing (ACT-101 to 105) activities are required on every propagation run. Propagation is Ready only when each is completed and verified by the manager; sowing activities stay locked until then.</p>
@@ -59,9 +62,53 @@ async function get(p) { const j = await (await fetch(API_URL + "?" + new URLSear
 async function post(b) { // text/plain avoids a CORS preflight on Apps Script
   const j = await (await fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(b)})).json();
   if (j.error) throw new Error(j.error); return j; }
+
+/* ---- Oregon window, wave check and propagation-room occupancy ---- */
+let DASH = {runs: [], windows: {}}, PDY = null, SAVED = false, RMANUAL = false;
+const MON = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+const add = (iso, n) => new Date(Date.parse(iso) + n * 864e5).toISOString().slice(0, 10);
+const esc_ = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function winRanges(txt, y) { // "May 20 – Jun 20", "Apr–Jul 15", "May", "Apr AND Sep", "A; B" -> [{a, b}] ISO dates in year y
+  return String(txt || "").split(/;|\bAND\b/i).map(s => s.trim()).filter(Boolean).map(s => {
+    const m = /^([A-Za-z]{3})\w*(?:\s+(\d+))?(?:\s*[–-]\s*(?:([A-Za-z]{3})\w*)?\s*(\d+)?)?$/.exec(s); if (!m) return null;
+    const cap = x => x && x[0].toUpperCase() + x.slice(1).toLowerCase(), m1 = MON[cap(m[1])], m2 = m[3] ? MON[cap(m[3])] : m1;
+    if (m1 === undefined || m2 === undefined) return null;
+    const d1 = +m[2] || 1, d2 = +m[4] || new Date(Date.UTC(y, m2 + 1, 0)).getUTCDate();
+    return {a: new Date(Date.UTC(y, m1, d1)).toISOString().slice(0, 10), b: new Date(Date.UTC(y, m2, d2)).toISOString().slice(0, 10)};
+  }).filter(Boolean);
+}
+const winText = () => $("plat").value === "F" ? (DASH.windows || {})[$("crop").value + "|F"] : "";
+function inWin(iso) { const t = winText(); if (!t) return null; const r = winRanges(t, +iso.slice(0, 4)); return r.length ? r.some(x => iso >= x.a && iso <= x.b) : null; }
+function showWin() {
+  const el = $("win"), t = winText(); if (!t) { el.innerHTML = ""; return; }
+  const dob = $("dob").value, y = dob ? +dob.slice(0, 4) : (PDY || new Date().getFullYear() + 1), r = winRanges(t, y), ok = dob ? inWin(dob) : null;
+  el.innerHTML = `<div class="note" ${ok === true ? 'style="background:var(--accs);color:var(--acc)"' : ""}><b>Oregon allowable window, ${y}:</b> ${r.length ? r.map(x => `<button type="button" data-d="${x.a}" style="min-height:30px;padding:2px 8px;margin:2px">${fmt(x.a)} to ${fmt(x.b)}</button>`).join("") : esc_(t)}
+    ${ok === false ? " The DOB is outside this window." : ok === true ? " The DOB is inside this window." : " Tap a range to start on its first day."}</div>`;
+  el.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { $("dob").value = b.dataset.d; calc(); });
+}
+function occ(T) {
+  let s = 0, d = 0;
+  (DASH.runs || []).forEach(r => { const n = +r.trays_per_wave || 0; if (!n || !r.sow_date_wave1) return;
+    for (let i = 0; i < (+r.waves || 1); i++) { const g = (+r.gap_days || 14) * i; if (add(r.sow_date_wave1, g) <= T && T < add(r.dob, g)) s += n; } });
+  if (PLAN && !SAVED && !PLAN.direct) PLAN.schedule.forEach(w => { if (w.sow <= T && T < w.plant) d += w.trays || 0; });
+  return {s, d};
+}
+function roomUpdate() {
+  const sq = +$("rsq").value || 1.55, cap = Math.floor(800 / sq), T = $("rday").value || new Date().toISOString().slice(0, 10), o = occ(T);
+  const used = Math.min(cap, o.s + o.d), over = Math.max(0, o.s + o.d - cap);
+  const cells = [...Array(Math.min(o.s, cap)).fill("s"), ...Array(Math.min(o.d, Math.max(0, cap - o.s))).fill("d")]; while (cells.length < cap) cells.push("");
+  let peak = null;
+  if (PLAN && !SAVED && !PLAN.direct) { const end = PLAN.schedule[PLAN.schedule.length - 1].plant; for (let t = PLAN.schedule[0].sow; t < end; t = add(t, 1)) { const x = occ(t), n = x.s + x.d; if (!peak || n > peak.n) peak = {n, t}; } }
+  $("roomv").innerHTML = `<p><b>${used}</b> of ${cap} trays occupied on ${fmt(T)} (${Math.round(used / cap * 100)}%) · ${cap - used} empty${over ? ` · <b style="color:var(--warn)">over by ${over}</b>` : ""}</p>
+    <div class="trays">${cells.map(c => `<div class="tr ${c}"></div>`).join("")}</div>
+    <p class="k"><span class="sw tr s"></span>Saved runs (${o.s})<span class="sw tr d"></span>Draft plan (${o.d})<span class="sw tr"></span>Empty</p>
+    ${peak ? (peak.n > cap ? `<div class="note">Shortage: on ${fmt(peak.t)} this plan needs ${peak.n} trays and the room holds ${cap}. Stagger the waves or reduce them.</div>` : `<p class="k">Peak with this plan: ${peak.n} of ${cap} trays on ${fmt(peak.t)}.</p>`) : ""}`;
+}
 async function init() {
   if (!API_URL) return $("cfg").classList.remove("hidden");
   try { META = (await get({action:"meta"})).crops; REF = (await get({action:"activities"})).activities; } catch (e) { return err("Cannot reach the API: " + e.message); }
+  try { DASH = await get({action:"dash"}); } catch (e) { err("Oregon windows and room occupancy need the latest Code.gs deployed (" + e.message + ")."); }
+  $("rday").value = new Date().toISOString().slice(0, 10); roomUpdate();
   $("crop").innerHTML = META.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join(""); onCrop();
 }
 async function onCrop() {
@@ -72,28 +119,32 @@ async function onCrop() {
 async function onPlat() {
   $("waves").value = $("gap").value = $("lead").value = "";
   try { const d = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value});
-    $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.label}</option>`).join(""); } catch (e) { err(e.message); }
+    $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.label}</option>`).join("");
+    const yc = {}; d.dates.forEach(x => { const y = x.date.slice(0, 4); yc[y] = (yc[y] || 0) + 1; }); PDY = +Object.keys(yc).sort((a, b) => yc[b] - yc[a])[0] || null; } catch (e) { err(e.message); }
+  showWin();
   calc();
 }
 function params() {
   const p = {action:"plan", crop:$("crop").value, platform:$("plat").value, dob:$("dob").value};
   ["waves","gap","lead"].forEach(k => { if ($(k).value !== "") p[k] = $(k).value; }); return p;
 }
-function calc() { clearTimeout(TIMER); TIMER = setTimeout(async () => {
-  err(""); if (!$("dob").value) { $("out").innerHTML = ""; return; }
-  try { PLAN = await get(params()); render(); } catch (e) { err(e.message); } }, 250); }
+function calc() { SAVED = false; showWin(); clearTimeout(TIMER); TIMER = setTimeout(async () => {
+  err(""); if (!$("dob").value) { $("out").innerHTML = ""; PLAN = null; roomUpdate(); return; }
+  try { PLAN = await get(params()); if (!RMANUAL) $("rday").value = PLAN.propagationStart; render(); roomUpdate(); } catch (e) { err(e.message); } }, 250); }
 function calcText(s) { const c = s.calc; if (!c.seedsSource) return "Bulk, set by area";
   const base = c.beds && c.plantsPerBed ? `${c.beds} beds × ${c.plantsPerBed} = ${n(c.basePlants)} plants` : c.basePlants ? `${n(c.basePlants)} plants` : "";
   return [c.spacingIn ? c.spacingIn + "in spacing" : "", base, c.buffer ? c.buffer + " buffer" : "", (c.seedsPerBed ? c.seedsPerBed + " seeds per bed run " : "") + "= " + n(c.seedsSource) + (c.plannedWaves > 1 && s.platform === "F" ? ` over ${c.plannedWaves} waves` : "")].filter(Boolean).join(" · "); }
 function infraText(s) { const i = s.infrastructure; if (!i || (Array.isArray(i) && !i.length)) return "None needed";
   return Array.isArray(i) ? i.slice(0, 2).map(x => `${x.item}: ${x.quantity}`).join("; ") : `${i.group}: ${i.bench_sqft} sq ft bench (${i.track})`; }
 function render() {
-  const s = PLAN, w1 = s.schedule[0], unit = s.method === "SLIP" ? "slips" : s.method === "CUTTING" ? "cuttings" : "seeds/units";
+  const s = PLAN, wc = d => { const k = inWin(d); return k === null ? "n/a" : k ? "✓ in window" : "⚠ outside"; };
+  const bad = s.schedule.filter(w => inWin(w.plant) === false).map(w => w.wave), fl = s.flags.concat(bad.length ? [`Wave${bad.length > 1 ? "s" : ""} ${bad.join(", ")} fall outside the Oregon window (${winText()}).`] : []);
+  const  w1 = s.schedule[0], unit = s.method === "SLIP" ? "slips" : s.method === "CUTTING" ? "cuttings" : "seeds/units";
   $("out").innerHTML = `<section class="card"><div class="start">
     <div><div class="k">${s.direct ? "Direct-seed / planting date" : "Propagation start (sow) date"}</div><div class="big">${fmt(s.propagationStart)}</div></div>
     <div><div class="k">Trays per wave</div><div class="big">${s.traysPerWave}</div></div>
     <div><div class="k">Waves</div><div class="big">${s.waves}</div></div></div>
-    ${s.flags.map(f => `<div class="note">${f}</div>`).join("")}</section>
+    ${fl.map(f => `<div class="note">${f}</div>`).join("")}</section>
   <section class="card"><h2>${s.cropName} (${s.crop}) · ${s.method.replace("_", " ")}</h2><div class="grid">
     <div><span class="k">Planting location</span><b>${s.plantingLocation}</b></div>
     ${s.bedAssignment ? `<div><span class="k">Plan bed assignment</span><b>${s.bedAssignment}</b></div>` : ""}
@@ -105,12 +156,12 @@ function render() {
     <div><span class="k">Days before DOB</span><b>${s.preDobDays}</b></div></div></section>
   ${w1.phases.length ? `<section class="card"><h2>Propagation phases (wave 1)</h2><div class="table"><table><tr><th>Phase</th><th>Days</th><th>Starts</th><th>Ends</th></tr>
     ${w1.phases.map(p => `<tr><td>${p.phase}</td><td>${p.days}</td><td>${fmt(p.start)}</td><td>${fmt(p.end)}</td></tr>`).join("")}</table></div></section>` : ""}
-  <section class="card"><h2>Wave schedule</h2><div class="table"><table><tr><th>Wave</th><th>Sow by</th><th>Plant (DOB)</th><th>Trays</th><th>Material</th></tr>
-  ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td></tr>`).join("")}</table></div></section>`;
+  <section class="card"><h2>Wave schedule</h2><div class="table"><table><tr><th>Wave</th><th>Sow by</th><th>Plant (DOB)</th><th>Trays</th><th>Material</th><th>Oregon window</th></tr>
+  ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td><td>${wc(w.plant)}</td></tr>`).join("")}</table></div></section>`;
 }
 async function saveRun() {
   err(""); if (!$("dob").value) return err("Enter a planting date first.");
-  try { const r = await post({...params(), action:"saveRun"}); RUN = r.runId; PLAN = r.plan; render(); $("runid").textContent = "Run " + RUN;
+  try { const r = await post({...params(), action:"saveRun"}); RUN = r.runId; PLAN = r.plan; SAVED = true; try { DASH = await get({action:"dash"}); } catch (e) {} render(); roomUpdate(); $("runid").textContent = "Run " + RUN;
     $("gate").classList.remove("hidden"); drawPicker(); draw(r.state); loadLive(); } catch (e) { err(e.message); }
 }
 function drawPicker() {
@@ -157,5 +208,6 @@ async function assign() {
 }
 $("crop").onchange = onCrop; $("plat").onchange = onPlat; $("pdate").onchange = () => { if ($("pdate").value) { $("dob").value = $("pdate").value; calc(); } };
 ["dob","waves","gap","lead"].forEach(i => $(i).addEventListener("input", calc));
+$("rday").addEventListener("input", () => { RMANUAL = true; roomUpdate(); }); $("rsq").addEventListener("input", roomUpdate);
 $("save").onclick = saveRun; $("assign").onclick = assign; init();
 </script></body></html>
