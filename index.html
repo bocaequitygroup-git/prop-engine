@@ -22,7 +22,7 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 .pill{font-size:12px;color:var(--mute)}details{margin:6px 0}summary{cursor:pointer;font-weight:600}
 .act{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px}
 .act input[type=number],.act input.u{min-height:32px;width:90px;padding:4px 6px}.act .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center;grid-column:2}
-.act button{min-height:32px;padding:4px 10px}.gatebox{border-left:4px solid var(--warn)}
+.act button{min-height:32px;padding:4px 10px}.gatebox{border-left:4px solid var(--warn)}.act .lnk{background:none;color:var(--ink);border:0;padding:0;min-height:0;font:inherit;font-weight:600;text-align:left}.det{display:grid;gap:6px;padding-top:6px;border-top:1px dashed var(--line)}.det .r{grid-column:1}.det input,.det select{min-height:32px;padding:4px 6px}.badge.live{background:var(--accs);color:var(--acc)}
 .trays{display:grid;grid-template-columns:repeat(auto-fill,minmax(14px,1fr));gap:2px;margin:8px 0}.tr{aspect-ratio:1;border:1px solid var(--line);border-radius:2px}.tr.s{background:var(--acc);border-color:var(--acc)}.tr.d{background:var(--warn);border-color:var(--warn)}.sw{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin:0 4px 0 12px}
 </style></head><body><main>
 <h1>Ngapori Propagation Engine</h1>
@@ -106,6 +106,7 @@ function roomUpdate() {
 async function init() {
   if (!API_URL) return $("cfg").classList.remove("hidden");
   try { META = (await get({action:"meta"})).crops; REF = (await get({action:"activities"})).activities; } catch (e) { return err("Cannot reach the API: " + e.message); }
+  try { WORKERS = (await get({action:"workers"})).workers; } catch (e) {}
   try { DASH = await get({action:"dash"}); } catch (e) { err("Oregon windows and room occupancy need the latest Code.gs deployed (" + e.message + ")."); }
   $("rday").value = new Date().toISOString().slice(0, 10); roomUpdate();
   $("crop").innerHTML = META.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join(""); onCrop();
@@ -168,19 +169,44 @@ function drawPicker() {
   $("picker").innerHTML = Object.entries(by).map(([ph, l]) => `<details><summary>${ph}</summary><div class="chk">${l.map(a =>
     `<label title="${a.description}"><input type="checkbox" value="${a.activity_id}"> ${a.activity_id} · ${a.activity}</label>`).join("")}</div></details>`).join("");
 }
+let WORKERS = [], OPEN = {};
+const when = s => { if (!s) return "n/a"; const d = new Date(s); return isNaN(d) ? String(s) : String(s).length > 10 ? d.toLocaleString() : fmt(String(s).slice(0, 10)); };
+const statusOf = a => a.overridden ? ["Overridden by manager", ""] : a.verified ? ["Verified", "ok"] : a.completed ? ["Completed · awaiting verification", ""] :
+  a.sessions && a.sessions.length ? ["In progress · " + a.sessions.map(s => s.by || "n/a").join(", "), "live"] : a.assignee ? ["Assigned · " + a.assignee, ""] : ["Not started", ""];
+function detail(a) {
+  const gate = a.scope !== "crop-wave", ss = a.sessions || [];
+  const who = WORKERS.length ? `<select data-who="${a.id}"><option value="">Select worker…</option>${WORKERS.map(w => `<option value="${esc_(w.id)}" ${w.id === a.assigneeId ? "selected" : ""}>${esc_(w.name)} (${esc_(w.role)})</option>`).join("")}</select>`
+    : `<input data-who="${a.id}" placeholder="Worker name" value="${esc_(a.assignee)}">`;
+  return `<div class="k"><b>Assigned to:</b> ${a.assignee ? `${esc_(a.assignee)}${a.due ? " · due " + when(a.due) : ""} · assigned ${when(a.assigneeAt)}${a.assignedBy ? " by " + esc_(a.assignedBy) : ""}` : "nobody yet"} · added to this run ${when(a.assignedAt)}</div>
+  <div class="r">${who}<input type="date" data-due="${a.id}" value="${esc_(a.due)}" aria-label="Due date"><button type="button" data-as="${a.id}">Assign activity</button></div>
+  <div class="k"><b>Live status:</b> ${ss.length ? ss.map(s => `${esc_(s.by || "n/a")} since ${when(s.since)} (wave ${esc_(s.wave)}${s.equipment ? ", " + esc_(s.equipment) : ""})`).join("; ") : "no live session open"}</div>
+  <div class="k"><b>Completed:</b> ${a.completed ? `${when(a.completedAt)} by ${esc_(a.completedBy || "n/a")}${a.count ? " · " + esc_(a.count) + " " + esc_(a.unit) : ""}` : "not yet"}</div>
+  <div class="k"><b>Verification:</b> ${a.verified ? `verified ${when(a.verifiedAt)}${a.verifiedBy ? " by " + esc_(a.verifiedBy) : ""}${a.verifyNotes ? " · notes: " + esc_(a.verifyNotes) : ""}` : a.completed ? "waiting for the manager" : "available once the activity is completed"}</div>
+  ${a.verified ? "" : `<div class="r"><input data-note="${a.id}" placeholder="Verification notes" size="30" ${a.completed ? "" : "disabled"}><button type="button" data-v="${a.id}" ${a.completed ? "" : "disabled"}>Manager verify</button></div>`}
+  ${!gate ? "" : a.overridden ? `<div class="note"><b>Overridden</b> by ${esc_(a.overrideBy)} on ${when(a.overrideAt)}: ${esc_(a.overrideReason)}</div>`
+    : `<div class="r"><input data-why="${a.id}" placeholder="Reason for override (required)" size="30"><button type="button" data-ov="${a.id}">Manager override</button></div><div class="k">Override clears this gate without the crew completing it. Needs the manager PIN and is recorded with your reason.</div>`}`;
+}
+async function refreshRun() { try { draw(await get({action:"run", runId:RUN})); } catch (e) { err(e.message); } }
 function draw(st) {
-  $("myacts").innerHTML = st.activities.map(a => { const gate = a.scope !== "crop-wave";
-    return `<div class="act ${gate ? "gatebox" : ""}"><input type="checkbox" data-id="${a.id}" ${a.completed ? "checked" : ""} ${a.locked ? "disabled" : ""} aria-label="Complete ${a.name}">
-    <div><b>${a.id} · ${a.name}</b> <span class="pill">${a.timing}${gate ? " · " + a.scope + " gate" : ""}${a.locked ? " · locked until gates verified" : ""}</span></div>
+  $("myacts").innerHTML = st.activities.map(a => { const gate = a.scope !== "crop-wave", [stx, cls] = statusOf(a), open = !!OPEN[a.id];
+    return `<div class="act ${gate ? "gatebox" : ""}"><input type="checkbox" data-id="${a.id}" ${a.completed ? "checked" : ""} ${a.locked ? "disabled" : ""} aria-label="Complete ${esc_(a.name)}">
+    <div><button type="button" class="lnk" data-x="${a.id}" aria-expanded="${open}">${open ? "▾" : "▸"} ${a.id} · ${esc_(a.name)}</button> <span class="pill">${esc_(a.timing)}${gate ? " · " + a.scope + " gate" : ""}${a.locked ? " · locked until gates verified" : ""}</span> <span class="badge ${cls}">${esc_(stx)}</span></div>
     <div class="r">${a.requiresCount ? `<input type="number" min="0" data-c="${a.id}" value="${a.count || ""}" placeholder="Qty"><input class="u" data-u="${a.id}" value="${a.unit || ""}" placeholder="Unit">` : ""}
-    ${a.locked ? "" : `<button data-s="${a.id}">Start session</button>`}${a.completed ? (a.verified ? `<span class="badge ok">Verified</span>` : `<button data-v="${a.id}">Manager verify</button>`) : ""}</div></div>`; }).join("");
-  $("myacts").querySelectorAll("input[type=checkbox]").forEach(i => i.onchange = async () => {
+    ${a.locked ? "" : `<button data-s="${a.id}">Start session</button>`}${a.completed ? (a.verified ? `<span class="badge ok">Verified</span>` : `<button data-v="${a.id}">Manager verify</button>`) : ""}</div>
+    <div class="det ${open ? "" : "hidden"}" style="grid-column:2">${detail(a)}</div></div>`; }).join("");
+  const box = $("myacts"), val = sel => (box.querySelector(sel) || {}).value || "";
+  box.querySelectorAll("[data-x]").forEach(b => b.onclick = () => { const id = b.dataset.x, d = b.closest(".act").querySelector(".det"); OPEN[id] = !OPEN[id]; d.classList.toggle("hidden", !OPEN[id]); b.setAttribute("aria-expanded", OPEN[id]); b.textContent = (OPEN[id] ? "▾" : "▸") + b.textContent.slice(1); });
+  box.querySelectorAll("input[type=checkbox]").forEach(i => i.onchange = async () => {
     const id = i.dataset.id, c = document.querySelector(`[data-c="${id}"]`), u = document.querySelector(`[data-u="${id}"]`);
     try { draw(await post({action:"complete", runId:RUN, activityId:id, completed:i.checked, count:c ? c.value : "", unit:u ? u.value : "", user:$("user").value})); err(""); } catch (e) { i.checked = !i.checked; err(e.message); } });
-  $("myacts").querySelectorAll("[data-v]").forEach(b => b.onclick = async () => {
-    try { draw(await post({action:"verify", runId:RUN, activityId:b.dataset.v, pin:$("pin").value, user:$("user").value})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
-  $("myacts").querySelectorAll("[data-s]").forEach(b => b.onclick = async () => {
-    try { await post({action:"startSession", runId:RUN, activityId:b.dataset.s, wave:$("swave").value, user:$("user").value}); err(""); loadLive(); } catch (e) { err(e.message); } });
+  box.querySelectorAll("[data-v]").forEach(b => b.onclick = async () => { const id = b.dataset.v;
+    try { draw(await post({action:"verify", runId:RUN, activityId:id, pin:$("pin").value, user:$("user").value, notes:val(`[data-note="${id}"]`)})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
+  box.querySelectorAll("[data-s]").forEach(b => b.onclick = async () => {
+    try { await post({action:"startSession", runId:RUN, activityId:b.dataset.s, wave:$("swave").value, user:$("user").value}); err(""); await refreshRun(); loadLive(); } catch (e) { err(e.message); } });
+  box.querySelectorAll("[data-as]").forEach(b => b.onclick = async () => { const id = b.dataset.as, w = val(`[data-who="${id}"]`);
+    try { draw(await post({action:"assignTo", runId:RUN, activityId:id, workerId:WORKERS.length ? w : "", name:WORKERS.length ? "" : w, due:val(`[data-due="${id}"]`), user:$("user").value})); err(""); } catch (e) { err(e.message); } });
+  box.querySelectorAll("[data-ov]").forEach(b => b.onclick = async () => { const id = b.dataset.ov;
+    try { draw(await post({action:"override", runId:RUN, activityId:id, pin:$("pin").value, reason:val(`[data-why="${id}"]`), user:$("user").value})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
   $("st").textContent = st.notApplicable ? "No propagation (direct-seeded)" : st.ready ? "Ready" : "Not ready"; $("st").className = "badge" + (st.ready || st.notApplicable ? " ok" : "");
 }
 
