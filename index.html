@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ngapori Propagation Engine</title>
+<style>
+:root{--bg:#edf1ec;--card:#fff;--ink:#17231c;--mute:#5d6b62;--line:#cfd8cf;--acc:#2f6f4f;--accs:#dcebe1;--warn:#a85d00;--warns:#fbeccf}
+@media(prefers-color-scheme:dark){:root{--bg:#111a14;--card:#1a261e;--ink:#e6efe8;--mute:#92a398;--line:#2f4036;--acc:#6fc596;--accs:#21382b;--warn:#f0b455;--warns:#3a2c10;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 48px}h1{font-size:28px;margin:0 0 2px}h2{font-size:17px;margin:0 0 10px}
+.sub,.k{color:var(--mute)}.k{font-size:13px}.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}
+input,select,button{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-height:40px}
+button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:pointer}:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.start{display:flex;flex-wrap:wrap;gap:24px;border-left:6px solid var(--acc);padding-left:14px}.big{font-size:32px;font-weight:800;line-height:1.15}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.grid div{border:1px solid var(--line);border-radius:8px;padding:10px}.grid b{display:block;font-size:18px}
+.table{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:480px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}th{font-size:13px;color:var(--mute)}
+.note{background:var(--warns);color:var(--warn);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:14px}
+.badge{display:inline-block;padding:3px 10px;border-radius:99px;font-weight:600;font-size:13px;background:var(--warns);color:var(--warn)}.badge.ok{background:var(--accs);color:var(--acc)}
+.chk{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}.chk label{flex-direction:row;align-items:center;gap:8px;font-weight:400;border:1px solid var(--line);border-radius:6px;padding:8px}
+.chk input{min-height:0;width:18px;height:18px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:10px}.hidden{display:none}
+.pill{font-size:12px;color:var(--mute)}details{margin:6px 0}summary{cursor:pointer;font-weight:600}
+.act{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px}
+.act input[type=number],.act input.u{min-height:32px;width:90px;padding:4px 6px}.act .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center;grid-column:2}
+.act button{min-height:32px;padding:4px 10px}.gatebox{border-left:4px solid var(--warn)}
+</style></head><body><main>
+<h1>Ngapori Propagation Engine</h1>
+<p class="sub">Pick a crop, platform and planting date (DOB). The engine works backward to the propagation start, trays and seed, and tracks the activities.</p>
+<div class="note hidden" id="cfg">Set <code>API_URL</code> at the top of this file to your deployed Apps Script web app URL (see README).</div>
+<div class="note hidden" id="err"></div>
+<section class="card"><div class="form">
+<label>Crop<select id="crop"></select></label>
+<label>Planting platform<select id="plat"></select></label>
+<label>Plan date (optional)<select id="pdate"></select></label>
+<label>Planting date (DOB)<input type="date" id="dob"></label>
+<label>Waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
+<label>Days between waves<input type="number" id="gap" min="1" placeholder="from plan"></label>
+<label>Days before DOB<input type="number" id="lead" min="0" placeholder="from parameters"></label>
+</div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
+<div id="out"></div>
+<section class="card hidden" id="gate"><h2>Activities</h2>
+<p class="k">Assign activities from the reference list. Post-transplant (ACT-607) and pre-sowing (ACT-101 to 105) activities are required on every propagation run. Propagation is Ready only when each is completed and verified by the manager; sowing activities stay locked until then.</p>
+<div id="myacts"></div>
+<details><summary>Assign more activities</summary><div id="picker"></div><div class="row"><button id="assign">Assign selected</button></div></details>
+<div class="row"><label>Your name<input id="user"></label><label>Manager PIN<input id="pin" type="password" autocomplete="off"></label><label>Wave for new sessions<input id="swave" type="number" min="1" value="1"></label></div>
+<p>Status: <span class="badge" id="st">Not ready</span></p></section>
+<section class="card hidden" id="live"><h2>Live sessions</h2><p class="k">Work in progress. Conditions and equipment can change during the shift. Closing a session writes one permanent log entry and clears it from here.</p><div id="sessions"></div></section>
+<section class="card hidden" id="logcard"><h2>Activity log</h2><p class="k">Permanent record. Entries are never edited; a correction is added as a new entry. Planning data is not affected.</p><div class="table" id="logt"></div></section>
+</main>
+<script>
+const API_URL = ""; // <- paste your Apps Script Web app URL here (ends in /exec)
+const $ = id => document.getElementById(id);
+const fmt = s => s ? new Date(s + "T00:00:00").toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric", year:"numeric"}) : "";
+const n = x => x.toLocaleString();
+let META = [], PLAN = null, RUN = null, REF = [], TIMER = null;
+const err = m => { $("err").textContent = m || ""; $("err").classList.toggle("hidden", !m); };
+async function get(p) { const j = await (await fetch(API_URL + "?" + new URLSearchParams(p))).json(); if (j.error) throw new Error(j.error); return j; }
+async function post(b) { // text/plain avoids a CORS preflight on Apps Script
+  const j = await (await fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(b)})).json();
+  if (j.error) throw new Error(j.error); return j; }
+async function init() {
+  if (!API_URL) return $("cfg").classList.remove("hidden");
+  try { META = (await get({action:"meta"})).crops; REF = (await get({action:"activities"})).activities; } catch (e) { return err("Cannot reach the API: " + e.message); }
+  $("crop").innerHTML = META.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join(""); onCrop();
+}
+async function onCrop() {
+  const c = META.find(x => x.code === $("crop").value);
+  $("plat").innerHTML = c.platforms.map(p => `<option value="${p}">${p === "F" ? "Field" : "Greenhouse"}</option>`).join(""); onPlat();
+}
+async function onPlat() {
+  $("waves").value = $("gap").value = $("lead").value = "";
+  try { const d = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value});
+    $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.label}</option>`).join(""); } catch (e) { err(e.message); }
+  calc();
+}
+function params() {
+  const p = {action:"plan", crop:$("crop").value, platform:$("plat").value, dob:$("dob").value};
+  ["waves","gap","lead"].forEach(k => { if ($(k).value !== "") p[k] = $(k).value; }); return p;
+}
+function calc() { clearTimeout(TIMER); TIMER = setTimeout(async () => {
+  err(""); if (!$("dob").value) { $("out").innerHTML = ""; return; }
+  try { PLAN = await get(params()); render(); } catch (e) { err(e.message); } }, 250); }
+function calcText(s) { const c = s.calc; if (!c.seedsSource) return "Bulk, set by area";
+  const base = c.beds && c.plantsPerBed ? `${c.beds} beds × ${c.plantsPerBed} = ${n(c.basePlants)} plants` : c.basePlants ? `${n(c.basePlants)} plants` : "";
+  return [c.spacingIn ? c.spacingIn + "in spacing" : "", base, c.buffer ? c.buffer + " buffer" : "", (c.seedsPerBed ? c.seedsPerBed + " seeds per bed run " : "") + "= " + n(c.seedsSource) + (c.plannedWaves > 1 && s.platform === "F" ? ` over ${c.plannedWaves} waves` : "")].filter(Boolean).join(" · "); }
+function infraText(s) { const i = s.infrastructure; if (!i || (Array.isArray(i) && !i.length)) return "None needed";
+  return Array.isArray(i) ? i.slice(0, 2).map(x => `${x.item}: ${x.quantity}`).join("; ") : `${i.group}: ${i.bench_sqft} sq ft bench (${i.track})`; }
+function render() {
+  const s = PLAN, w1 = s.schedule[0], unit = s.method === "SLIP" ? "slips" : s.method === "CUTTING" ? "cuttings" : "seeds/units";
+  $("out").innerHTML = `<section class="card"><div class="start">
+    <div><div class="k">${s.direct ? "Direct-seed / planting date" : "Propagation start (sow) date"}</div><div class="big">${fmt(s.propagationStart)}</div></div>
+    <div><div class="k">Trays per wave</div><div class="big">${s.traysPerWave}</div></div>
+    <div><div class="k">Waves</div><div class="big">${s.waves}</div></div></div>
+    ${s.flags.map(f => `<div class="note">${f}</div>`).join("")}</section>
+  <section class="card"><h2>${s.cropName} (${s.crop}) · ${s.method.replace("_", " ")}</h2><div class="grid">
+    <div><span class="k">Planting location</span><b>${s.plantingLocation}</b></div>
+    ${s.bedAssignment ? `<div><span class="k">Plan bed assignment</span><b>${s.bedAssignment}</b></div>` : ""}
+    <div><span class="k">Propagation location</span><b>${s.propagationLocation || "None, bypasses nursery"}</b></div>
+    <div><span class="k">Tray type</span><b>${s.trayCells ? s.trayCells + "-cell plug tray" : "None"}</b></div>
+    <div><span class="k">Material per wave</span><b>${s.materialPerWave ? n(s.materialPerWave) + " " + unit : "Bulk"}</b></div>
+    <div><span class="k">Seeding calculation</span><b>${calcText(s)}</b></div>
+    <div><span class="k">Propagation infrastructure</span><b>${infraText(s)}</b></div>
+    <div><span class="k">Days before DOB</span><b>${s.preDobDays}</b></div></div></section>
+  ${w1.phases.length ? `<section class="card"><h2>Propagation phases (wave 1)</h2><div class="table"><table><tr><th>Phase</th><th>Days</th><th>Starts</th><th>Ends</th></tr>
+    ${w1.phases.map(p => `<tr><td>${p.phase}</td><td>${p.days}</td><td>${fmt(p.start)}</td><td>${fmt(p.end)}</td></tr>`).join("")}</table></div></section>` : ""}
+  <section class="card"><h2>Wave schedule</h2><div class="table"><table><tr><th>Wave</th><th>Sow by</th><th>Plant (DOB)</th><th>Trays</th><th>Material</th></tr>
+  ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td></tr>`).join("")}</table></div></section>`;
+}
+async function saveRun() {
+  err(""); if (!$("dob").value) return err("Enter a planting date first.");
+  try { const r = await post({...params(), action:"saveRun"}); RUN = r.runId; PLAN = r.plan; render(); $("runid").textContent = "Run " + RUN;
+    $("gate").classList.remove("hidden"); drawPicker(); draw(r.state); loadLive(); } catch (e) { err(e.message); }
+}
+function drawPicker() {
+  const by = {}; REF.filter(a => a.scope === "crop-wave").forEach(a => (by[a.phase] = by[a.phase] || []).push(a));
+  $("picker").innerHTML = Object.entries(by).map(([ph, l]) => `<details><summary>${ph}</summary><div class="chk">${l.map(a =>
+    `<label title="${a.description}"><input type="checkbox" value="${a.activity_id}"> ${a.activity_id} · ${a.activity}</label>`).join("")}</div></details>`).join("");
+}
+function draw(st) {
+  $("myacts").innerHTML = st.activities.map(a => { const gate = a.scope !== "crop-wave";
+    return `<div class="act ${gate ? "gatebox" : ""}"><input type="checkbox" data-id="${a.id}" ${a.completed ? "checked" : ""} ${a.locked ? "disabled" : ""} aria-label="Complete ${a.name}">
+    <div><b>${a.id} · ${a.name}</b> <span class="pill">${a.timing}${gate ? " · " + a.scope + " gate" : ""}${a.locked ? " · locked until gates verified" : ""}</span></div>
+    <div class="r">${a.requiresCount ? `<input type="number" min="0" data-c="${a.id}" value="${a.count || ""}" placeholder="Qty"><input class="u" data-u="${a.id}" value="${a.unit || ""}" placeholder="Unit">` : ""}
+    ${a.locked ? "" : `<button data-s="${a.id}">Start session</button>`}${a.completed ? (a.verified ? `<span class="badge ok">Verified</span>` : `<button data-v="${a.id}">Manager verify</button>`) : ""}</div></div>`; }).join("");
+  $("myacts").querySelectorAll("input[type=checkbox]").forEach(i => i.onchange = async () => {
+    const id = i.dataset.id, c = document.querySelector(`[data-c="${id}"]`), u = document.querySelector(`[data-u="${id}"]`);
+    try { draw(await post({action:"complete", runId:RUN, activityId:id, completed:i.checked, count:c ? c.value : "", unit:u ? u.value : "", user:$("user").value})); err(""); } catch (e) { i.checked = !i.checked; err(e.message); } });
+  $("myacts").querySelectorAll("[data-v]").forEach(b => b.onclick = async () => {
+    try { draw(await post({action:"verify", runId:RUN, activityId:b.dataset.v, pin:$("pin").value, user:$("user").value})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
+  $("myacts").querySelectorAll("[data-s]").forEach(b => b.onclick = async () => {
+    try { await post({action:"startSession", runId:RUN, activityId:b.dataset.s, wave:$("swave").value, user:$("user").value}); err(""); loadLive(); } catch (e) { err(e.message); } });
+  $("st").textContent = st.notApplicable ? "No propagation (direct-seeded)" : st.ready ? "Ready" : "Not ready"; $("st").className = "badge" + (st.ready || st.notApplicable ? " ok" : "");
+}
+
+const F_ = (id, ph, v = "") => `<label>${ph}<input data-f="${id}" value="${v}"></label>`;
+async function loadLive() {
+  if (!RUN) return; $("live").classList.remove("hidden"); $("logcard").classList.remove("hidden");
+  try { const [s, l] = await Promise.all([get({action:"sessions", runId:RUN}), get({action:"log", runId:RUN})]);
+    $("sessions").innerHTML = s.sessions.length ? s.sessions.map(x => `<div class="act" data-sid="${x.session_id}"><span></span><div><b>${x.activity_id} · wave ${x.wave}</b> <span class="pill">started ${new Date(x.started_at).toLocaleString()} by ${x.started_by || "n/a"} · ${x.location}</span></div>
+      <div class="r" style="grid-column:1/-1">${F_("equipment", "Equipment", x.equipment)}${F_("soilMoisture", "Soil moisture", x.soil_moisture)}${F_("weather", "Weather", x.weather)}${F_("tempF", "Temp °F", x.temp_f)}${F_("notes", "Notes", x.notes)}<button data-u="${x.session_id}">Update</button></div>
+      <div class="r" style="grid-column:1/-1">${F_("laborHours", "Labor hours")}${F_("workers", "Workers")}${F_("inputs", "Inputs applied")}${F_("quantity", "Quantity")}${F_("unit", "Unit")}${F_("yieldActual", "Yield")}${F_("yieldUnit", "Yield unit")}
+      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-f="completed" checked style="min-height:0;width:18px;height:18px"> Completed</label><button data-c="${x.session_id}">Close and log</button></div></div>`).join("") : `<p class="k">No open sessions.</p>`;
+    const val = (box, k) => { const e = box.querySelector(`[data-f="${k}"]`); return e.type === "checkbox" ? e.checked : e.value; };
+    $("sessions").querySelectorAll("[data-u]").forEach(b => b.onclick = async () => { const box = b.closest("[data-sid]");
+      try { await post({action:"updateSession", sessionId:b.dataset.u, equipment:val(box, "equipment"), notes:val(box, "notes"), conditions:{soilMoisture:val(box, "soilMoisture"), weather:val(box, "weather"), tempF:val(box, "tempF")}}); err(""); } catch (e) { err(e.message); } });
+    $("sessions").querySelectorAll("[data-c]").forEach(b => b.onclick = async () => { const box = b.closest("[data-sid]");
+      try { const r = await post({action:"closeSession", sessionId:b.dataset.c, user:$("user").value, completed:val(box, "completed"), laborHours:val(box, "laborHours"), workers:val(box, "workers"), inputs:val(box, "inputs"), quantity:val(box, "quantity"), unit:val(box, "unit"), yieldActual:val(box, "yieldActual"), yieldUnit:val(box, "yieldUnit"), notes:val(box, "notes")});
+        err(""); if (r.state && r.state.activities) draw(r.state); loadLive(); } catch (e) { err(e.message); } });
+    $("logt").innerHTML = l.entries.length ? `<table><tr><th>Logged</th><th>Activity</th><th>Wave</th><th>Minutes</th><th>Labor h</th><th>Qty</th><th>Yield</th><th>Outcome</th></tr>${l.entries.map(x => `<tr><td>${new Date(x.logged_at).toLocaleString()}</td><td>${x.activity_id} ${x.activity_name}${x.entry_type === "CORRECTION" ? " (correction)" : ""}${x.correctedBy ? " (corrected)" : ""}</td><td>${x.wave}</td><td>${x.duration_min}</td><td>${x.labor_hours}</td><td>${x.quantity} ${x.unit}</td><td>${x.yield_actual} ${x.yield_unit}</td><td>${x.outcome}</td></tr>`).join("")}</table>` : `<p class="k">No entries yet.</p>`;
+  } catch (e) { err(e.message); }
+}
+async function assign() {
+  const ids = [...$("picker").querySelectorAll("input:checked")].map(i => i.value); if (!ids.length) return;
+  try { draw(await post({action:"assign", runId:RUN, activityIds:ids})); $("picker").querySelectorAll("input").forEach(i => i.checked = false); } catch (e) { err(e.message); }
+}
+$("crop").onchange = onCrop; $("plat").onchange = onPlat; $("pdate").onchange = () => { if ($("pdate").value) { $("dob").value = $("pdate").value; calc(); } };
+["dob","waves","gap","lead"].forEach(i => $(i).addEventListener("input", calc));
+$("save").onclick = saveRun; $("assign").onclick = assign; init();
+</script></body></html>
