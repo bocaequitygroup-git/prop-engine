@@ -25,18 +25,19 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 .act button{min-height:32px;padding:4px 10px}.gatebox{border-left:4px solid var(--warn)}
 </style></head><body><main>
 <h1>Ngapori Propagation Engine</h1>
-<p class="sub">Pick a crop, platform and planting date (DOB). The engine works backward to the propagation start, trays and seed, and tracks the activities.</p>
+<p class="sub">Pick a crop, enter the planting date (DOB) and choose the planting location. The engine fills in the propagation start date, trays per wave, seed, bed assignment and propagation location, and tracks the activities.</p>
 <div class="note hidden" id="cfg">Set <code>API_URL</code> at the top of this file to your deployed Apps Script web app URL (see README).</div>
 <div class="note hidden" id="err"></div>
 <section class="card"><div class="form">
 <label>Crop<select id="crop"></select></label>
-<label>Planting platform<select id="plat"></select></label>
-<label>Plan date (optional)<select id="pdate"></select></label>
 <label>Planting date (DOB)<input type="date" id="dob"></label>
+<label>Planting / transplant location<select id="plat"></select></label>
+</div><details><summary>Optional adjustments</summary><div class="form">
+<label>Plan date<select id="pdate"></select></label>
 <label>Waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
 <label>Days between waves<input type="number" id="gap" min="1" placeholder="from plan"></label>
 <label>Days before DOB<input type="number" id="lead" min="0" placeholder="from parameters"></label>
-</div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
+</div></details><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
 <div id="out"></div>
 <section class="card hidden" id="gate"><h2>Activities</h2>
 <p class="k">Assign activities from the reference list. Post-transplant (ACT-607) and pre-sowing (ACT-101 to 105) activities are required on every propagation run. Propagation is Ready only when each is completed and verified by the manager; sowing activities stay locked until then.</p>
@@ -65,7 +66,8 @@ async function init() {
 }
 async function onCrop() {
   const c = META.find(x => x.code === $("crop").value);
-  $("plat").innerHTML = c.platforms.map(p => `<option value="${p}">${p === "F" ? "Field" : "Greenhouse"}</option>`).join(""); onPlat();
+  const loc = p => ((c.locations || []).find(l => l.platform === p) || {}).location;
+  $("plat").innerHTML = c.platforms.map(p => `<option value="${p}">${p === "F" ? "Field" : "Greenhouse"}${loc(p) ? " · " + loc(p) : ""}</option>`).join(""); onPlat();
 }
 async function onPlat() {
   $("waves").value = $("gap").value = $("lead").value = "";
