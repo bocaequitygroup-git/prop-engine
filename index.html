@@ -26,19 +26,18 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 .trays{display:grid;grid-template-columns:repeat(auto-fill,minmax(14px,1fr));gap:2px;margin:8px 0}.tr{aspect-ratio:1;border:1px solid var(--line);border-radius:2px}.tr.s{background:var(--acc);border-color:var(--acc)}.tr.d{background:var(--warn);border-color:var(--warn)}.sw{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin:0 4px 0 12px}
 </style></head><body><main>
 <h1>Ngapori Propagation Engine</h1>
-<p class="sub">Pick a crop, enter the planting date (DOB), choose the planting location and the number of waves. The engine fills in the propagation start date, trays per wave, seed, bed assignment and propagation location, and tracks the activities.</p>
+<p class="sub">Pick a crop, planting platform and location, and planting date (DOB). The engine works backward to the propagation start, trays and seed, matches the crop to its planting and propagation locations, and tracks the activities.</p>
 <div class="note hidden" id="cfg">Set <code>API_URL</code> at the top of this file to your deployed Apps Script web app URL (see README).</div>
 <div class="note hidden" id="err"></div>
 <section class="card"><div class="form">
 <label>Crop<select id="crop"></select></label>
+<label>Planting platform / location<select id="plat"></select></label>
+<label>Plan date (optional)<select id="pdate"></select></label>
 <label>Planting date (DOB)<input type="date" id="dob"></label>
-<label>Planting / transplant location<select id="plat"></select></label>
-<label>Number of waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
-</div><details><summary>Optional adjustments</summary><div class="form">
-<label>Plan date<select id="pdate"></select></label>
+<label>Waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
 <label>Days between waves<input type="number" id="gap" min="1" placeholder="from plan"></label>
 <label>Days before DOB<input type="number" id="lead" min="0" placeholder="from parameters"></label>
-</div></details><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
+</div><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
 <section class="card"><h2>Propagation room · Bay 3 benches</h2><div class="row"><label>Day shown<input type="date" id="rday"></label><label>Sq ft per tray (estimate)<input type="number" id="rsq" step="0.05" min="0.5" value="1.55"></label></div><div id="roomv"></div>
 <p class="k">Bay 3 bench limit is 800 sq ft (Infra_Field). The workbook's own tray figures work out to about 1.5 to 2.3 sq ft per tray, so change the footprint to match your trays. Green = saved runs, orange = the plan you are drafting.</p></section>
 <div id="out"></div>
