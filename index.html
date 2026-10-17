@@ -26,18 +26,22 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 .trays{display:grid;grid-template-columns:repeat(auto-fill,minmax(14px,1fr));gap:2px;margin:8px 0}.tr{aspect-ratio:1;border:1px solid var(--line);border-radius:2px}.tr.s{background:var(--acc);border-color:var(--acc)}.tr.d{background:var(--warn);border-color:var(--warn)}.sw{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin:0 4px 0 12px}
 </style></head><body><main>
 <h1>Ngapori Propagation Engine</h1>
-<p class="sub">Pick a crop, planting platform and location, and planting date (DOB). The engine works backward to the propagation start, trays and seed, matches the crop to its planting and propagation locations, and tracks the activities.</p>
+<p class="sub">Choose the platform first, then the crop, number of waves and planting date (DOB). The engine fills in the propagation start date, trays per wave, and the planting and propagation locations for that crop, and tracks the activities.</p>
 <div class="note hidden" id="cfg">Set <code>API_URL</code> at the top of this file to your deployed Apps Script web app URL (see README).</div>
 <div class="note hidden" id="err"></div>
-<section class="card"><div class="form">
-<label>Crop<select id="crop"></select></label>
-<label>Planting platform / location<select id="plat"></select></label>
-<label>Plan date (optional)<select id="pdate"></select></label>
-<label>Planting date (DOB)<input type="date" id="dob"></label>
-<label>Waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
+<section class="card"><h2>1 · Manager selects</h2><div class="form">
+<label>Planting platform<select id="plat"></select></label>
+<label>Crop<select id="crop" disabled></select></label>
+<label>Number of waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
+<label>Planting / transplant date (DOB)<input type="date" id="dob"></label>
+</div>
+<details><summary>Optional adjustments</summary><div class="form" style="margin-top:8px">
+<label>Plan date (quick pick)<select id="pdate"></select></label>
 <label>Days between waves<input type="number" id="gap" min="1" placeholder="from plan"></label>
 <label>Days before DOB<input type="number" id="lead" min="0" placeholder="from parameters"></label>
-</div><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
+</div></details><div id="win"></div></section>
+<section class="card"><h2>2 · Engine fills in</h2><div id="auto"></div>
+<div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
 <section class="card"><h2>Propagation room · Bay 3 benches</h2><div class="row"><label>Day shown<input type="date" id="rday"></label><label>Sq ft per tray (estimate)<input type="number" id="rsq" step="0.05" min="0.5" value="1.55"></label></div><div id="roomv"></div>
 <p class="k">Bay 3 bench limit is 800 sq ft (Infra_Field). The workbook's own tray figures work out to about 1.5 to 2.3 sq ft per tray, so change the footprint to match your trays. Green = saved runs, orange = the plan you are drafting.</p></section>
 <div id="out"></div>
@@ -109,18 +113,25 @@ async function init() {
   try { WORKERS = (await get({action:"workers"})).workers; } catch (e) {}
   try { DASH = await get({action:"dash"}); } catch (e) { err("Oregon windows and room occupancy need the latest Code.gs deployed (" + e.message + ")."); }
   $("rday").value = new Date().toISOString().slice(0, 10); roomUpdate();
-  $("crop").innerHTML = META.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join(""); onCrop();
+  $("plat").innerHTML = `<option value="">Choose platform…</option>` + platList().map(p => `<option value="${p}">${PL[p] || p}</option>`).join(""); onPlatform(); autoFill();
+}
+const PL = {F:"Field", G:"Greenhouse"};
+function platList() { const s = new Set(); META.forEach(c => (c.platforms || []).forEach(p => s.add(p))); return ["F", "G"].filter(p => s.has(p)).concat([...s].filter(p => p !== "F" && p !== "G")); }
+function onPlatform() { // platform is chosen first; the crop list only offers crops the rulebook allows on that platform
+  const p = $("plat").value, keep = $("crop").value, list = p ? META.filter(c => (c.platforms || []).includes(p)) : [];
+  $("crop").disabled = !p;
+  $("crop").innerHTML = `<option value="">${p ? "Choose crop…" : "Choose platform first…"}</option>` + list.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join("");
+  if (list.some(c => c.code === keep)) $("crop").value = keep;
+  onCrop();
 }
 async function onCrop() {
-  const c = META.find(x => x.code === $("crop").value);
-  const loc = p => ((c.locations || []).find(l => l.platform === p) || {}).location;
-  $("plat").innerHTML = c.platforms.map(p => `<option value="${p}">${p === "F" ? "Field" : "Greenhouse"}${loc(p) ? " · " + loc(p) : ""}</option>`).join(""); onPlat();
-}
-async function onPlat() {
-  $("waves").value = $("gap").value = $("lead").value = "";
-  try { const d = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value});
-    $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.label}</option>`).join("");
-    const yc = {}; d.dates.forEach(x => { const y = x.date.slice(0, 4); yc[y] = (yc[y] || 0) + 1; }); PDY = +Object.keys(yc).sort((a, b) => yc[b] - yc[a])[0] || null; } catch (e) { err(e.message); }
+  $("waves").value = $("gap").value = $("lead").value = ""; $("waves").placeholder = "from plan"; $("gap").placeholder = "from plan"; $("lead").placeholder = "from parameters";
+  PDY = null; $("pdate").innerHTML = `<option value="">Choose a plan date…</option>`;
+  if ($("plat").value && $("crop").value) {
+    try { const d = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value});
+      $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.label}</option>`).join("");
+      const yc = {}; d.dates.forEach(x => { const y = x.date.slice(0, 4); yc[y] = (yc[y] || 0) + 1; }); PDY = +Object.keys(yc).sort((a, b) => yc[b] - yc[a])[0] || null; } catch (e) { err(e.message); }
+  }
   showWin();
   calc();
 }
@@ -128,27 +139,45 @@ function params() {
   const p = {action:"plan", crop:$("crop").value, platform:$("plat").value, dob:$("dob").value};
   ["waves","gap","lead"].forEach(k => { if ($(k).value !== "") p[k] = $(k).value; }); return p;
 }
-function calc() { SAVED = false; showWin(); clearTimeout(TIMER); TIMER = setTimeout(async () => {
-  err(""); if (!$("dob").value) { $("out").innerHTML = ""; PLAN = null; roomUpdate(); return; }
+function calc() { SAVED = false; showWin(); clearTimeout(TIMER);
+  if (PLAN && (PLAN.crop !== $("crop").value || PLAN.platform !== $("plat").value)) PLAN = null;
+  autoFill();
+  TIMER = setTimeout(async () => {
+  err(""); if (!$("dob").value || !$("plat").value || !$("crop").value) { $("out").innerHTML = ""; PLAN = null; autoFill(); roomUpdate(); return; }
   try { PLAN = await get(params()); if (!RMANUAL) $("rday").value = PLAN.propagationStart; render(); roomUpdate(); } catch (e) { err(e.message); } }, 250); }
 function calcText(s) { const c = s.calc; if (!c.seedsSource) return "Bulk, set by area";
   const base = c.beds && c.plantsPerBed ? `${c.beds} beds × ${c.plantsPerBed} = ${n(c.basePlants)} plants` : c.basePlants ? `${n(c.basePlants)} plants` : "";
   return [c.spacingIn ? c.spacingIn + "in spacing" : "", base, c.buffer ? c.buffer + " buffer" : "", (c.seedsPerBed ? c.seedsPerBed + " seeds per bed run " : "") + "= " + n(c.seedsSource) + (c.plannedWaves > 1 && s.platform === "F" ? ` over ${c.plannedWaves} waves` : "")].filter(Boolean).join(" · "); }
 function infraText(s) { const i = s.infrastructure; if (!i || (Array.isArray(i) && !i.length)) return "None needed";
   return Array.isArray(i) ? i.slice(0, 2).map(x => `${x.item}: ${x.quantity}`).join("; ") : `${i.group}: ${i.bench_sqft} sq ft bench (${i.track})`; }
+function flagsOf(s) {
+  const bad = s.schedule.filter(w => inWin(w.plant) === false).map(w => w.wave);
+  return s.flags.concat(bad.length ? [`Wave${bad.length > 1 ? "s" : ""} ${bad.join(", ")} fall outside the Oregon window (${winText()}).`] : []);
+}
+function autoFill() { // everything here is filled by the engine, never typed by the manager
+  const plat = $("plat").value, c = META.find(x => x.code === $("crop").value), s = PLAN;
+  if (!plat || !c) { $("auto").innerHTML = `<p class="k">${plat ? "Choose a crop" : "Choose a platform, then a crop,"} to see where the engine will plant and propagate it.</p>`; return; }
+  const ml = ((c.locations || []).find(l => l.platform === plat) || {}).location;
+  const pend = $("dob").value ? "Calculating…" : "Enter the planting date";
+  const wait = `<span class="k" style="font-size:15px;font-weight:400">${pend}</span>`;
+  const big = (l, v) => `<div><div class="k">${l}</div><div class="big">${v}</div></div>`;
+  const box = (l, v) => `<div><span class="k">${l}</span><b>${v}</b></div>`;
+  $("auto").innerHTML = `<div class="start">
+    ${big(s && s.direct ? "Direct-seed / planting date" : "Propagation start (sow) date", s ? fmt(s.propagationStart) : wait)}
+    ${big("Trays per wave", s ? (s.direct ? "None" : s.traysPerWave) : wait)}
+    ${big("Waves", s ? s.waves : wait)}</div>
+    <div class="grid" style="margin-top:12px">
+    ${box("Planting location (" + (PL[plat] || plat) + ")", esc_(s ? s.plantingLocation : ml) || "Not set in the rulebook")}
+    ${s && s.bedAssignment ? box("Plan bed assignment", esc_(s.bedAssignment)) : ""}
+    ${box("Propagation location", s ? esc_(s.propagationLocation) || "None, bypasses nursery" : wait)}</div>
+    ${s ? flagsOf(s).map(f => `<div class="note">${f}</div>`).join("") : ""}`;
+}
 function render() {
   const s = PLAN, wc = d => { const k = inWin(d); return k === null ? "n/a" : k ? "✓ in window" : "⚠ outside"; };
-  const bad = s.schedule.filter(w => inWin(w.plant) === false).map(w => w.wave), fl = s.flags.concat(bad.length ? [`Wave${bad.length > 1 ? "s" : ""} ${bad.join(", ")} fall outside the Oregon window (${winText()}).`] : []);
-  const  w1 = s.schedule[0], unit = s.method === "SLIP" ? "slips" : s.method === "CUTTING" ? "cuttings" : "seeds/units";
-  $("out").innerHTML = `<section class="card"><div class="start">
-    <div><div class="k">${s.direct ? "Direct-seed / planting date" : "Propagation start (sow) date"}</div><div class="big">${fmt(s.propagationStart)}</div></div>
-    <div><div class="k">Trays per wave</div><div class="big">${s.traysPerWave}</div></div>
-    <div><div class="k">Waves</div><div class="big">${s.waves}</div></div></div>
-    ${fl.map(f => `<div class="note">${f}</div>`).join("")}</section>
-  <section class="card"><h2>${s.cropName} (${s.crop}) · ${s.method.replace("_", " ")}</h2><div class="grid">
-    <div><span class="k">Planting location</span><b>${s.plantingLocation}</b></div>
-    ${s.bedAssignment ? `<div><span class="k">Plan bed assignment</span><b>${s.bedAssignment}</b></div>` : ""}
-    <div><span class="k">Propagation location</span><b>${s.propagationLocation || "None, bypasses nursery"}</b></div>
+  const w1 = s.schedule[0], unit = s.method === "SLIP" ? "slips" : s.method === "CUTTING" ? "cuttings" : "seeds/units";
+  autoFill();
+  $("waves").placeholder = String(s.plannedWaves); $("gap").placeholder = String(s.gapDays); $("lead").placeholder = String(s.preDobDays);
+  $("out").innerHTML = `<section class="card"><h2>${s.cropName} (${s.crop}) · ${s.method.replace("_", " ")}</h2><div class="grid">
     <div><span class="k">Tray type</span><b>${s.trayCells ? s.trayCells + "-cell plug tray" : "None"}</b></div>
     <div><span class="k">Material per wave</span><b>${s.materialPerWave ? n(s.materialPerWave) + " " + unit : "Bulk"}</b></div>
     <div><span class="k">Seeding calculation</span><b>${calcText(s)}</b></div>
@@ -160,7 +189,7 @@ function render() {
   ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td><td>${wc(w.plant)}</td></tr>`).join("")}</table></div></section>`;
 }
 async function saveRun() {
-  err(""); if (!$("dob").value) return err("Enter a planting date first.");
+  err(""); if (!$("plat").value || !$("crop").value || !$("dob").value) return err("Choose a platform, crop and planting date first.");
   try { const r = await post({...params(), action:"saveRun"}); RUN = r.runId; PLAN = r.plan; SAVED = true; try { DASH = await get({action:"dash"}); } catch (e) {} render(); roomUpdate(); $("runid").textContent = "Run " + RUN;
     $("gate").classList.remove("hidden"); drawPicker(); draw(r.state); loadLive(); } catch (e) { err(e.message); }
 }
@@ -231,7 +260,7 @@ async function assign() {
   const ids = [...$("picker").querySelectorAll("input:checked")].map(i => i.value); if (!ids.length) return;
   try { draw(await post({action:"assign", runId:RUN, activityIds:ids})); $("picker").querySelectorAll("input").forEach(i => i.checked = false); } catch (e) { err(e.message); }
 }
-$("crop").onchange = onCrop; $("plat").onchange = onPlat; $("pdate").onchange = () => { if ($("pdate").value) { $("dob").value = $("pdate").value; calc(); } };
+$("crop").onchange = onCrop; $("plat").onchange = onPlatform; $("pdate").onchange = () => { if ($("pdate").value) { $("dob").value = $("pdate").value; calc(); } };
 ["dob","waves","gap","lead"].forEach(i => $(i).addEventListener("input", calc));
 $("rday").addEventListener("input", () => { RMANUAL = true; roomUpdate(); }); $("rsq").addEventListener("input", roomUpdate);
 $("save").onclick = saveRun; $("assign").onclick = assign; init();
