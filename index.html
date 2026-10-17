@@ -48,7 +48,7 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 <section class="card hidden" id="logcard"><h2>Activity log</h2><p class="k">Permanent record. Entries are never edited; a correction is added as a new entry. Planning data is not affected.</p><div class="table" id="logt"></div></section>
 </main>
 <script>
-const API_URL = ""; // <- paste your Apps Script Web app URL here (ends in /exec)
+const API_URL = "https://script.google.com/macros/s/AKfycbz7qyhFT5BRUpiqLCnjtT8gRX-UQ-I0lQhF__H6dgCU_Rql2WFOMuNm-YLXazi0Zrir_g/exec"; // <- paste your Apps Script Web app URL here (ends in /exec)
 const $ = id => document.getElementById(id);
 const fmt = s => s ? new Date(s + "T00:00:00").toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric", year:"numeric"}) : "";
 const n = x => x.toLocaleString();
