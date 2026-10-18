@@ -36,12 +36,12 @@ h3{font-size:15px;margin:16px 0 6px}.ar{border:1px solid var(--line);border-radi
 <label>Planting platform<select id="pf"></select></label>
 <label>Crop<select id="crop"></select></label>
 <label>Planting platform / location<select id="plat"></select></label>
-<label>Plan date (optional)<select id="pdate"></select></label>
+<label>Fill DOB from plan dates (optional)<select id="pdate"></select></label>
 <label>Planting date (DOB)<input type="date" id="dob"></label>
 <label>Waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
 <label>Days between waves<input type="number" id="gap" min="1" placeholder="from plan"></label>
 <label>Days before DOB<input type="number" id="lead" min="0" placeholder="from parameters"></label>
-</div><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
+</div><div id="planinfo"></div><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
 <section class="card"><h2>Propagation room · Bay 3 benches</h2><div class="row"><label>Day shown<input type="date" id="rday"></label><label>Sq ft per tray (estimate)<input type="number" id="rsq" step="0.05" min="0.5" value="1.55"></label></div><div id="roomv"></div>
 <p class="k">Bay 3 bench limit is 800 sq ft (Infra_Field). The workbook's own tray figures work out to about 1.5 to 2.3 sq ft per tray, so change the footprint to match your trays. Green = saved runs, orange = the plan you are drafting.</p></section>
 <section class="card"><h2>Assignments</h2>
@@ -138,11 +138,22 @@ async function onCrop() {
   const loc = p => ((c.locations || []).find(l => l.platform === p) || {}).location;
   $("plat").innerHTML = c.platforms.filter(p => p === $("pf").value).map(p => `<option value="${p}">${p === "F" ? "Field" : "Greenhouse"}${loc(p) ? " · " + loc(p) : ""}</option>`).join(""); onPlat();
 }
+let PINFO = null;
+const addD = (s, n) => { const x = new Date(s + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+function showInfo() {
+  const el = $("planinfo"), d = PINFO; if (!d || !$("plat").value) { el.innerHTML = ""; return; }
+  const gap = +$("gap").value || d.gapDays, nxt = d.lastScheduled ? addD(d.lastScheduled, gap) : "";
+  el.innerHTML = `<div class="note"><b>Plan for this crop:</b> ${d.dates.length} planting date${d.dates.length === 1 ? "" : "s"}${d.lastPlanned ? ", the last on " + fmt(d.lastPlanned) : ""}.
+    ${d.savedRuns ? ` Extra runs already saved: ${d.savedRuns}, running to ${fmt(d.lastSaved)}.` : ""}
+    To add waves, enter the number of waves and a DOB. ${nxt ? `<button type="button" id="afterlast" style="min-height:30px;padding:2px 8px;margin:2px">Start after the last scheduled wave (${fmt(nxt)})</button>` : ""}</div>`;
+  const b = $("afterlast"); if (b) b.onclick = () => { $("dob").value = nxt; calc(); };
+}
 async function onPlat() {
   $("waves").value = $("gap").value = $("lead").value = "";
-  if (!$("plat").value) { $("pdate").innerHTML = `<option value="">Choose a plan date…</option>`; PDY = null; showWin(); return calc(); }
+  if (!$("plat").value) { $("pdate").innerHTML = `<option value="">Choose a plan date…</option>`; PDY = null; PINFO = null; showInfo(); showWin(); return calc(); }
   try { const d = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value});
     $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.label}</option>`).join("");
+    PINFO = d; showInfo();
     const yc = {}; d.dates.forEach(x => { const y = x.date.slice(0, 4); yc[y] = (yc[y] || 0) + 1; }); PDY = +Object.keys(yc).sort((a, b) => yc[b] - yc[a])[0] || null; } catch (e) { err(e.message); }
   showWin();
   calc();
@@ -153,7 +164,7 @@ function params() {
 }
 function calc() { SAVED = false; showWin(); clearTimeout(TIMER); TIMER = setTimeout(async () => {
   err(""); if (!$("dob").value || !$("plat").value) { $("out").innerHTML = ""; PLAN = null; roomUpdate(); return; }
-  try { PLAN = await get(params()); if (!RMANUAL) $("rday").value = PLAN.propagationStart; render(); roomUpdate(); } catch (e) { err(e.message); } }, 250); }
+  try { PLAN = await get(params()); $("waves").placeholder = "plan: " + PLAN.plannedWaves; $("gap").placeholder = "plan: " + PLAN.gapDays; $("lead").placeholder = "parameters: " + PLAN.preDobDays; showInfo(); if (!RMANUAL) $("rday").value = PLAN.propagationStart; render(); roomUpdate(); } catch (e) { err(e.message); } }, 250); }
 function calcText(s) { const c = s.calc; if (!c.seedsSource) return "Bulk, set by area";
   const base = c.beds && c.plantsPerBed ? `${c.beds} beds × ${c.plantsPerBed} = ${n(c.basePlants)} plants` : c.basePlants ? `${n(c.basePlants)} plants` : "";
   return [c.spacingIn ? c.spacingIn + "in spacing" : "", base, c.buffer ? c.buffer + " buffer" : "", (c.seedsPerBed ? c.seedsPerBed + " seeds per bed run " : "") + "= " + n(c.seedsSource) + (c.plannedWaves > 1 && s.platform === "F" ? ` over ${c.plannedWaves} waves` : "")].filter(Boolean).join(" · "); }
@@ -179,8 +190,8 @@ function render() {
     <div><span class="k">Days before DOB</span><b>${s.preDobDays}</b></div></div></section>
   ${w1.phases.length ? `<section class="card"><h2>Propagation phases (wave 1)</h2><div class="table"><table><tr><th>Phase</th><th>Days</th><th>Starts</th><th>Ends</th></tr>
     ${w1.phases.map(p => `<tr><td>${p.phase}</td><td>${p.days}</td><td>${fmt(p.start)}</td><td>${fmt(p.end)}</td></tr>`).join("")}</table></div></section>` : ""}
-  <section class="card"><h2>Wave schedule</h2><div class="table"><table><tr><th>Wave</th><th>Sow by</th><th>Plant (DOB)</th><th>Trays</th><th>Material</th><th>Oregon window</th></tr>
-  ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td><td>${wc(w.plant)}</td></tr>`).join("")}</table></div></section>`;
+  <section class="card"><h2>Wave schedule${s.runType === "ADDITIONAL" ? " · additional waves" : ""}</h2><div class="table"><table><tr><th>Wave</th><th>Sow by</th><th>Plant (DOB)</th><th>Trays</th><th>Material</th><th>Oregon window</th><th>Plan status</th></tr>
+  ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td><td>${wc(w.plant)}</td><td>${w.savedRun ? "Saved · " + esc_(w.savedRun) : w.inPlan ? "In plan" : "<b>Additional</b>"}</td></tr>`).join("")}</table></div></section>`;
 }
 async function saveRun() {
   err(""); if (!$("plat").value) return err("Choose the planting platform and crop first."); if (!$("dob").value) return err("Enter a planting date first.");
