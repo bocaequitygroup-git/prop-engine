@@ -23,6 +23,7 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 .act{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px}
 .act input[type=number],.act input.u{min-height:32px;width:90px;padding:4px 6px}.act .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center;grid-column:2}
 .act button{min-height:32px;padding:4px 10px}.gatebox{border-left:4px solid var(--warn)}.act .lnk{background:none;color:var(--ink);border:0;padding:0;min-height:0;font:inherit;font-weight:600;text-align:left}.det{display:grid;gap:6px;padding-top:6px;border-top:1px dashed var(--line)}.det .r{grid-column:1}.det input,.det select{min-height:32px;padding:4px 6px}.badge.live{background:var(--accs);color:var(--acc)}
+.team{border:1px solid var(--line);border-radius:6px;padding:6px 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:4px 12px;margin:0}.team legend{font-size:12px;color:var(--mute);padding:0 4px}.team label{flex-direction:row;align-items:center;gap:8px;font-weight:400}.det .team input{min-height:0;width:18px;height:18px;padding:0}
 .trays{display:grid;grid-template-columns:repeat(auto-fill,minmax(14px,1fr));gap:2px;margin:8px 0}.tr{aspect-ratio:1;border:1px solid var(--line);border-radius:2px}.tr.s{background:var(--acc);border-color:var(--acc)}.tr.d{background:var(--warn);border-color:var(--warn)}.sw{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin:0 4px 0 12px}
 </style></head><body><main>
 <h1>Ngapori Propagation Engine</h1>
@@ -58,10 +59,15 @@ const fmt = s => s ? new Date(s + "T00:00:00").toLocaleDateString(undefined, {we
 const n = x => x.toLocaleString();
 let META = [], PLAN = null, RUN = null, REF = [], TIMER = null;
 const err = m => { $("err").textContent = m || ""; $("err").classList.toggle("hidden", !m); };
-async function get(p) { const j = await (await fetch(API_URL + "?" + new URLSearchParams(p))).json(); if (j.error) throw new Error(j.error); return j; }
-async function post(b) { // text/plain avoids a CORS preflight on Apps Script
-  const j = await (await fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(b)})).json();
-  if (j.error) throw new Error(j.error); return j; }
+async function call(url, opt) {
+  let t; try { t = await (await fetch(url, opt)).text(); } catch (e) { throw new Error("No connection to the server."); }
+  let j; try { j = JSON.parse(t); } catch (e) { throw new Error("The server sent back a web page instead of data. If you just changed Code.gs, deploy it as a new version; otherwise try again in a moment."); }
+  if (j.error) throw new Error(j.error); return j;
+}
+async function get(p) { const u = API_URL + "?" + new URLSearchParams(p);
+  try { return await call(u); } catch (e) { if (!/web page/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 1200)); return call(u); } }
+function post(b) { // text/plain avoids a CORS preflight on Apps Script
+  return call(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(b)}); }
 
 /* ---- Oregon window, wave check and propagation-room occupancy ---- */
 let DASH = {runs: [], windows: {}}, PDY = null, SAVED = false, RMANUAL = false;
@@ -181,13 +187,13 @@ function drawPicker() {
 let WORKERS = [], OPEN = {};
 const when = s => { if (!s) return "n/a"; const d = new Date(s); return isNaN(d) ? String(s) : String(s).length > 10 ? d.toLocaleString() : fmt(String(s).slice(0, 10)); };
 const statusOf = a => a.overridden ? ["Overridden by manager", ""] : a.verified ? ["Verified", "ok"] : a.completed ? ["Completed · awaiting verification", ""] :
-  a.sessions && a.sessions.length ? ["In progress · " + a.sessions.map(s => s.by || "n/a").join(", "), "live"] : a.assignee ? ["Assigned · " + a.assignee, ""] : ["Not started", ""];
+  a.sessions && a.sessions.length ? ["In progress · " + a.sessions.map(s => s.by || "n/a").join(", "), "live"] : a.assignee ? ["Assigned · " + String(a.assignee).replace(/;\s*/g, ", "), ""] : ["Not started", ""];
 function detail(a) {
   const gate = a.scope !== "crop-wave", ss = a.sessions || [];
-  const who = WORKERS.length ? `<select data-who="${a.id}"><option value="">Select worker…</option>${WORKERS.map(w => `<option value="${esc_(w.id)}" ${w.id === a.assigneeId ? "selected" : ""}>${esc_(w.name)} (${esc_(w.role)})</option>`).join("")}</select>`
+  const team = (a.assigneeIds || []).map(String), who = WORKERS.length ? `<fieldset class="team" data-who="${a.id}"><legend>Assign to: tick one or more workers</legend>${WORKERS.map(w => `<label><input type="checkbox" value="${esc_(w.id)}" ${team.includes(String(w.id)) ? "checked" : ""}> ${esc_(w.name)} (${esc_(w.role)})</label>`).join("")}</fieldset>`
     : `<input data-who="${a.id}" placeholder="Worker name" value="${esc_(a.assignee)}">`;
-  return `<div class="k"><b>Assigned to:</b> ${a.assignee ? `${esc_(a.assignee)}${a.due ? " · due " + when(a.due) : ""} · assigned ${when(a.assigneeAt)}${a.assignedBy ? " by " + esc_(a.assignedBy) : ""}` : "nobody yet"} · added to this run ${when(a.assignedAt)}</div>
-  <div class="r">${who}<input type="date" data-due="${a.id}" value="${esc_(a.due)}" aria-label="Due date"><button type="button" data-as="${a.id}">Assign activity</button></div>
+  return `<div class="k"><b>Assigned to:</b> ${a.assignee ? `${esc_(String(a.assignee).replace(/;\s*/g, ", "))}${a.due ? " · due " + when(a.due) : ""} · assigned ${when(a.assigneeAt)}${a.assignedBy ? " by " + esc_(a.assignedBy) : ""}` : "nobody yet"} · added to this run ${when(a.assignedAt)}</div>
+  <div class="r">${who}<input type="date" data-due="${a.id}" value="${esc_(a.due)}" aria-label="Due date"><button type="button" data-as="${a.id}">Save team</button></div>
   <div class="k"><b>Live status:</b> ${ss.length ? ss.map(s => `${esc_(s.by || "n/a")} since ${when(s.since)} (wave ${esc_(s.wave)}${s.equipment ? ", " + esc_(s.equipment) : ""})`).join("; ") : "no live session open"}</div>
   <div class="k"><b>Completed:</b> ${a.completed ? `${when(a.completedAt)} by ${esc_(a.completedBy || "n/a")}${a.count ? " · " + esc_(a.count) + " " + esc_(a.unit) : ""}` : "not yet"}</div>
   <div class="k"><b>Verification:</b> ${a.verified ? `verified ${when(a.verifiedAt)}${a.verifiedBy ? " by " + esc_(a.verifiedBy) : ""}${a.verifyNotes ? " · notes: " + esc_(a.verifyNotes) : ""}` : a.completed ? "waiting for the manager" : "available once the activity is completed"}</div>
@@ -205,15 +211,15 @@ function draw(st) {
     <div class="det ${open ? "" : "hidden"}" style="grid-column:2">${detail(a)}</div></div>`; }).join("");
   const box = $("myacts"), val = sel => (box.querySelector(sel) || {}).value || "";
   box.querySelectorAll("[data-x]").forEach(b => b.onclick = () => { const id = b.dataset.x, d = b.closest(".act").querySelector(".det"); OPEN[id] = !OPEN[id]; d.classList.toggle("hidden", !OPEN[id]); b.setAttribute("aria-expanded", OPEN[id]); b.textContent = (OPEN[id] ? "▾" : "▸") + b.textContent.slice(1); });
-  box.querySelectorAll("input[type=checkbox]").forEach(i => i.onchange = async () => {
+  box.querySelectorAll("input[type=checkbox][data-id]").forEach(i => i.onchange = async () => {
     const id = i.dataset.id, c = document.querySelector(`[data-c="${id}"]`), u = document.querySelector(`[data-u="${id}"]`);
     try { draw(await post({action:"complete", runId:RUN, activityId:id, completed:i.checked, count:c ? c.value : "", unit:u ? u.value : "", user:$("user").value})); err(""); } catch (e) { i.checked = !i.checked; err(e.message); } });
   box.querySelectorAll("[data-v]").forEach(b => b.onclick = async () => { const id = b.dataset.v;
     try { draw(await post({action:"verify", runId:RUN, activityId:id, pin:$("pin").value, user:$("user").value, notes:val(`[data-note="${id}"]`)})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
   box.querySelectorAll("[data-s]").forEach(b => b.onclick = async () => {
     try { await post({action:"startSession", runId:RUN, activityId:b.dataset.s, wave:$("swave").value, user:$("user").value}); err(""); await refreshRun(); loadLive(); } catch (e) { err(e.message); } });
-  box.querySelectorAll("[data-as]").forEach(b => b.onclick = async () => { const id = b.dataset.as, w = val(`[data-who="${id}"]`);
-    try { draw(await post({action:"assignTo", runId:RUN, activityId:id, workerId:WORKERS.length ? w : "", name:WORKERS.length ? "" : w, due:val(`[data-due="${id}"]`), user:$("user").value})); err(""); } catch (e) { err(e.message); } });
+  box.querySelectorAll("[data-as]").forEach(b => b.onclick = async () => { const id = b.dataset.as, f = box.querySelector(`[data-who="${id}"]`), ids = WORKERS.length ? [...f.querySelectorAll("input:checked")].map(i => i.value) : [];
+    try { draw(await post({action:"assignTo", runId:RUN, activityId:id, workerIds:ids, name:WORKERS.length ? "" : f.value, due:val(`[data-due="${id}"]`), user:$("user").value})); err(""); } catch (e) { err(e.message); } });
   box.querySelectorAll("[data-ov]").forEach(b => b.onclick = async () => { const id = b.dataset.ov;
     try { draw(await post({action:"override", runId:RUN, activityId:id, pin:$("pin").value, reason:val(`[data-why="${id}"]`), user:$("user").value})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
   $("st").textContent = st.notApplicable ? "No propagation (direct-seeded)" : st.ready ? "Ready" : "Not ready"; $("st").className = "badge" + (st.ready || st.notApplicable ? " ok" : "");
@@ -222,7 +228,7 @@ function draw(st) {
 const F_ = (id, ph, v = "") => `<label>${ph}<input data-f="${id}" value="${v}"></label>`;
 async function loadLive() {
   if (!RUN) return; $("live").classList.remove("hidden"); $("logcard").classList.remove("hidden");
-  try { const [s, l] = await Promise.all([get({action:"sessions", runId:RUN}), get({action:"log", runId:RUN})]);
+  try { const s = await get({action:"sessions", runId:RUN}), l = await get({action:"log", runId:RUN});
     $("sessions").innerHTML = s.sessions.length ? s.sessions.map(x => `<div class="act" data-sid="${x.session_id}"><span></span><div><b>${x.activity_id} · wave ${x.wave}</b> <span class="pill">started ${new Date(x.started_at).toLocaleString()} by ${x.started_by || "n/a"} · ${x.location}</span></div>
       <div class="r" style="grid-column:1/-1">${F_("equipment", "Equipment", x.equipment)}${F_("soilMoisture", "Soil moisture", x.soil_moisture)}${F_("weather", "Weather", x.weather)}${F_("tempF", "Temp °F", x.temp_f)}${F_("notes", "Notes", x.notes)}<button data-u="${x.session_id}">Update</button></div>
       <div class="r" style="grid-column:1/-1">${F_("laborHours", "Labor hours")}${F_("workers", "Workers")}${F_("inputs", "Inputs applied")}${F_("quantity", "Quantity")}${F_("unit", "Unit")}${F_("yieldActual", "Yield")}${F_("yieldUnit", "Yield unit")}
