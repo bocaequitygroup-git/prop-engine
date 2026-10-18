@@ -44,6 +44,10 @@ h3{font-size:15px;margin:16px 0 6px}.ar{border:1px solid var(--line);border-radi
 </div><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
 <section class="card"><h2>Propagation room · Bay 3 benches</h2><div class="row"><label>Day shown<input type="date" id="rday"></label><label>Sq ft per tray (estimate)<input type="number" id="rsq" step="0.05" min="0.5" value="1.55"></label></div><div id="roomv"></div>
 <p class="k">Bay 3 bench limit is 800 sq ft (Infra_Field). The workbook's own tray figures work out to about 1.5 to 2.3 sq ft per tray, so change the footprint to match your trays. Green = saved runs, orange = the plan you are drafting.</p></section>
+<section class="card"><h2>Assignments</h2>
+<div class="row"><label>Worker<select id="afw"><option value="">All workers</option></select></label><label>Show<select id="afs"><option value="">All runs</option><option value="this">Current run only</option></select></label><button id="arf" class="alt" type="button">Refresh</button></div>
+<h3>Who has what now</h3><div class="table" id="acur"><p class="k">Loading…</p></div>
+<h3>Log of assignments and reassignments</h3><div class="table" id="alogt"></div></section>
 <div id="out"></div>
 <section class="card hidden" id="gate"><h2>Activities</h2>
 <p class="k">Tick the activities, tick the workers, press Assign. Workers start, time and submit the work on their phones; the manager only assigns, reassigns and verifies. Post-transplant (ACT-607) and pre-sowing (ACT-101 to 105) are required on every propagation run, and the other activities stay locked until those are verified.</p>
@@ -120,7 +124,7 @@ async function init() {
   try { WORKERS = (await get({action:"workers"})).workers; } catch (e) {}
   try { DASH = await get({action:"dash"}); } catch (e) { err("Oregon windows and room occupancy need the latest Code.gs deployed (" + e.message + ")."); }
   $("rday").value = new Date().toISOString().slice(0, 10); roomUpdate();
-  $("pf").innerHTML = `<option value="">Choose platform…</option><option value="F">Field</option><option value="G">Greenhouse</option>`; onPf();
+  $("pf").innerHTML = `<option value="">Choose platform…</option><option value="F">Field</option><option value="G">Greenhouse</option>`; onPf(); loadAssign();
 }
 function onPf() { // crops offered = those the rulebook allows on the chosen platform
   const p = $("pf").value, keep = $("crop").value, list = p ? META.filter(c => c.platforms.includes(p)) : [];
@@ -183,7 +187,23 @@ async function saveRun() {
   try { const r = await post({...params(), action:"saveRun"}); RUN = r.runId; PLAN = r.plan; SAVED = true; try { DASH = await get({action:"dash"}); } catch (e) {} render(); roomUpdate(); $("runid").textContent = "Run " + RUN;
     $("gate").classList.remove("hidden"); draw(r.state); loadLive(); } catch (e) { err(e.message); }
 }
-let WORKERS = [], OPEN = {}, ST = null;
+let WORKERS = [], OPEN = {}, ST = null, AS = null;
+async function loadAssign() {
+  try { AS = await get({action:"assignments"}); } catch (e) { $("acur").innerHTML = `<p class="k">Could not load assignments: ${esc_(e.message)}</p>`; return; }
+  drawAssign();
+}
+function drawAssign() {
+  if (!AS) return;
+  const names = [...new Set(AS.current.flatMap(c => c.team).concat(AS.log.flatMap(l => [l.from, l.to])).filter(Boolean))].sort(), sel = $("afw"), keep = sel.value;
+  sel.innerHTML = `<option value="">All workers</option>` + names.map(n => `<option ${n === keep ? "selected" : ""}>${esc_(n)}</option>`).join("");
+  const w = sel.value, ok = x => $("afs").value !== "this" || !RUN || x.run === RUN, pf = p => p === "F" ? "Field" : p === "G" ? "Greenhouse" : "";
+  const cur = AS.current.filter(c => ok(c) && (!w || c.team.includes(w))), lg = AS.log.filter(l => ok(l) && (!w || l.from === w || l.to === w));
+  const act = x => `<b>${esc_(x.activityId)}</b> ${esc_(x.activity)}`, where = x => `${esc_(x.crop)} ${pf(x.platform)} · ${esc_(x.run)}`;
+  $("acur").innerHTML = cur.length ? `<table><tr><th>Worker(s)</th><th>Activity</th><th>Crop · run</th><th>Due</th><th>Status</th><th>Assigned</th></tr>${cur.map(c =>
+    `<tr><td>${esc_(c.team.join(", "))}</td><td>${act(c)}</td><td>${where(c)}</td><td>${c.due ? when(c.due) : ""}</td><td>${esc_(c.status)}</td><td>${when(c.assignedAt)}${c.assignedBy ? " by " + esc_(c.assignedBy) : ""}</td></tr>`).join("")}</table>` : `<p class="k">Nothing is assigned${w ? " to " + esc_(w) : ""} yet.</p>`;
+  $("alogt").innerHTML = lg.length ? `<table><tr><th>When</th><th>What happened</th><th>Activity</th><th>Crop · run</th><th>By</th></tr>${lg.map(l =>
+    `<tr><td>${when(l.at)}</td><td>${l.kind === "REASSIGN" ? `<b>Reassigned from ${esc_(l.from)} to ${esc_(l.to)}</b>` : l.kind === "UNASSIGN" ? `Removed ${esc_(l.from)}` : `Assigned to ${esc_(l.to)}`}</td><td>${act(l)}</td><td>${where(l)}</td><td>${esc_(l.by || "")}</td></tr>`).join("")}</table>` : `<p class="k">No assignments logged yet.</p>`;
+}
 const when = s => { if (!s) return "n/a"; const d = new Date(s); return isNaN(d) ? String(s) : String(s).length > 10 ? d.toLocaleString() : fmt(String(s).slice(0, 10)); };
 const nice = s => String(s == null ? "" : s).replace(/;\s*/g, ", ");
 const statusOf = a => a.overridden ? ["Overridden by manager", ""] : a.verified ? ["Verified", "ok"] : a.completed ? ["Done by worker · awaiting your verification", ""] :
@@ -227,11 +247,11 @@ async function onActs(e) {
   try {
     if (d.re) { OPEN["re" + d.re] = !OPEN["re" + d.re]; return draw(ST); }
     if (d.resave) { const t = teamVal(box.querySelector(`[data-team="re-${d.resave}"]`)); if (!t.workerIds.length && !t.name) return err("Tick at least one worker.");
-      OPEN["re" + d.resave] = false; draw(await post({action:"assignTo", runId:RUN, activityId:d.resave, workerIds:t.workerIds, name:t.name, due:val("due", d.resave), user:$("user").value})); return err(""); }
-    if (d.v) { draw(await post({action:"verify", runId:RUN, activityId:d.v, pin:$("pin").value, user:$("user").value, notes:val("note", d.v)})); $("pin").value = ""; return err(""); }
+      OPEN["re" + d.resave] = false; draw(await post({action:"assignTo", runId:RUN, activityId:d.resave, workerIds:t.workerIds, name:t.name, due:val("due", d.resave), user:$("user").value})); err(""); return loadAssign(); }
+    if (d.v) { draw(await post({action:"verify", runId:RUN, activityId:d.v, pin:$("pin").value, user:$("user").value, notes:val("note", d.v)})); $("pin").value = ""; err(""); return loadAssign(); }
     if (d.reopen) { if (!confirm("Send this activity back as not done? Its verification is cleared; the worker's log entry stays.")) return;
-      draw(await post({action:"reopen", runId:RUN, activityId:d.reopen, pin:$("pin").value, user:$("user").value})); $("pin").value = ""; return err(""); }
-    if (d.ov) { draw(await post({action:"override", runId:RUN, activityId:d.ov, pin:$("pin").value, reason:val("why", d.ov), user:$("user").value})); $("pin").value = ""; return err(""); }
+      draw(await post({action:"reopen", runId:RUN, activityId:d.reopen, pin:$("pin").value, user:$("user").value})); $("pin").value = ""; err(""); return loadAssign(); }
+    if (d.ov) { draw(await post({action:"override", runId:RUN, activityId:d.ov, pin:$("pin").value, reason:val("why", d.ov), user:$("user").value})); $("pin").value = ""; err(""); return loadAssign(); }
   } catch (x) { err(x.message); }
 }
 function draw(st) {
@@ -261,10 +281,10 @@ async function assign() {
   const ids = [...$("picker").querySelectorAll("input:checked")].map(i => i.value); if (!ids.length) return err("Tick at least one activity.");
   const t = teamVal($("teampick").firstElementChild); if (!t.workerIds.length && !t.name) return err("Tick at least one worker.");
   try { const st = await post({action:"assign", runId:RUN, activityIds:ids, workerIds:t.workerIds, name:t.name, due:$("due").value, user:$("user").value});
-    $("teampick").innerHTML = ""; $("due").value = ""; draw(st); err(""); } catch (e) { err(e.message); }
+    $("teampick").innerHTML = ""; $("due").value = ""; draw(st); err(""); loadAssign(); } catch (e) { err(e.message); }
 }
 $("pf").onchange = onPf; $("crop").onchange = onCrop; $("plat").onchange = onPlat; $("pdate").onchange = () => { if ($("pdate").value) { $("dob").value = $("pdate").value; calc(); } };
 ["dob","waves","gap","lead"].forEach(i => $(i).addEventListener("input", calc));
 $("rday").addEventListener("input", () => { RMANUAL = true; roomUpdate(); }); $("rsq").addEventListener("input", roomUpdate);
-$("save").onclick = saveRun; $("assign").onclick = assign; $("myacts").onclick = onActs; init();
+$("save").onclick = saveRun; $("assign").onclick = assign; $("myacts").onclick = onActs; $("afw").onchange = $("afs").onchange = drawAssign; $("arf").onclick = loadAssign; init();
 </script></body></html>
