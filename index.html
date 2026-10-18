@@ -18,11 +18,13 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 .note{background:var(--warns);color:var(--warn);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:14px}
 .badge{display:inline-block;padding:3px 10px;border-radius:99px;font-weight:600;font-size:13px;background:var(--warns);color:var(--warn)}.badge.ok{background:var(--accs);color:var(--acc)}
 .chk{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}.chk label{flex-direction:row;align-items:center;gap:8px;font-weight:400;border:1px solid var(--line);border-radius:6px;padding:8px}
-.chk input{min-height:0;width:18px;height:18px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:10px}.hidden{display:none}
+.chk input{min-height:0;width:18px;height:18px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:10px}.hidden{display:none!important}
 .pill{font-size:12px;color:var(--mute)}details{margin:6px 0}summary{cursor:pointer;font-weight:600}
 .act{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px}
 .act input[type=number],.act input.u{min-height:32px;width:90px;padding:4px 6px}.act .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center;grid-column:2}
 .act button{min-height:32px;padding:4px 10px}.gatebox{border-left:4px solid var(--warn)}.act .lnk{background:none;color:var(--ink);border:0;padding:0;min-height:0;font:inherit;font-weight:600;text-align:left}.det{display:grid;gap:6px;padding-top:6px;border-top:1px dashed var(--line)}.det .r{grid-column:1}.det input,.det select{min-height:32px;padding:4px 6px}.badge.live{background:var(--accs);color:var(--acc)}
+h3{font-size:15px;margin:16px 0 6px}.ar{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:grid;gap:4px}.ar.gatebox{border-left:4px solid var(--warn)}.ar .r{margin-top:2px}.desc{font-size:14px;border-left:3px solid var(--line);padding-left:8px}.pane{border-top:1px dashed var(--line);padding-top:8px;display:grid;gap:6px}
+.plist{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;margin-top:6px}.pa{flex-direction:row!important;align-items:flex-start;gap:8px;font-weight:400;border:1px solid var(--line);border-radius:6px;padding:8px}.pa input{min-height:0;width:18px;height:18px;margin-top:3px}.pa .d{display:block;font-weight:400;color:var(--mute);font-size:13px}button.alt{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .team{border:1px solid var(--line);border-radius:6px;padding:6px 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:4px 12px;margin:0}.team legend{font-size:12px;color:var(--mute);padding:0 4px}.team label{flex-direction:row;align-items:center;gap:8px;font-weight:400}.det .team input{min-height:0;width:18px;height:18px;padding:0}
 .trays{display:grid;grid-template-columns:repeat(auto-fill,minmax(14px,1fr));gap:2px;margin:8px 0}.tr{aspect-ratio:1;border:1px solid var(--line);border-radius:2px}.tr.s{background:var(--acc);border-color:var(--acc)}.tr.d{background:var(--warn);border-color:var(--warn)}.sw{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin:0 4px 0 12px}
 </style></head><body><main>
@@ -44,12 +46,14 @@ button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:poi
 <p class="k">Bay 3 bench limit is 800 sq ft (Infra_Field). The workbook's own tray figures work out to about 1.5 to 2.3 sq ft per tray, so change the footprint to match your trays. Green = saved runs, orange = the plan you are drafting.</p></section>
 <div id="out"></div>
 <section class="card hidden" id="gate"><h2>Activities</h2>
-<p class="k">Assign activities from the reference list. Post-transplant (ACT-607) and pre-sowing (ACT-101 to 105) activities are required on every propagation run. Propagation is Ready only when each is completed and verified by the manager; sowing activities stay locked until then.</p>
-<div id="myacts"></div>
-<details><summary>Assign more activities</summary><div id="picker"></div><div class="row"><button id="assign">Assign selected</button></div></details>
-<div class="row"><label>Your name<input id="user"></label><label>Manager PIN<input id="pin" type="password" autocomplete="off"></label><label>Wave for new sessions<input id="swave" type="number" min="1" value="1"></label></div>
+<p class="k">Tick the activities, tick the workers, press Assign. Workers start, time and submit the work on their phones; the manager only assigns, reassigns and verifies. Post-transplant (ACT-607) and pre-sowing (ACT-101 to 105) are required on every propagation run, and the other activities stay locked until those are verified.</p>
+<div class="row"><label>Your name<input id="user"></label><label>Manager PIN (for verify, reopen, override)<input id="pin" type="password" autocomplete="off"></label></div>
+<h3>1 · Pick activities</h3><div id="picker"></div>
+<h3>2 · Pick workers</h3><div id="teampick"></div>
+<div class="row"><label>Due date (optional)<input type="date" id="due"></label><button id="assign">Assign</button></div>
+<h3>In this run</h3><div id="myacts"></div>
 <p>Status: <span class="badge" id="st">Not ready</span></p></section>
-<section class="card hidden" id="live"><h2>Live sessions</h2><p class="k">Work in progress. Conditions and equipment can change during the shift. Closing a session writes one permanent log entry and clears it from here.</p><div id="sessions"></div></section>
+<section class="card hidden" id="live"><h2>Live sessions</h2><p class="k">Work the crew is doing now, started from their phones. Only close a session here to clear one that was left open. Closing a session writes one permanent log entry and clears it from here.</p><div id="sessions"></div></section>
 <section class="card hidden" id="logcard"><h2>Activity log</h2><p class="k">Permanent record. Entries are never edited; a correction is added as a new entry. Planning data is not affected.</p><div class="table" id="logt"></div></section>
 </main>
 <script>
@@ -58,7 +62,7 @@ const $ = id => document.getElementById(id);
 const fmt = s => s ? new Date(s + "T00:00:00").toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric", year:"numeric"}) : "";
 const n = x => x.toLocaleString();
 let META = [], PLAN = null, RUN = null, REF = [], TIMER = null;
-const err = m => { $("err").textContent = m || ""; $("err").classList.toggle("hidden", !m); };
+const err = m => { $("err").textContent = m || ""; $("err").classList.toggle("hidden", !m); if (m) $("err").scrollIntoView({behavior:"smooth", block:"center"}); };
 async function call(url, opt) {
   let t; try { t = await (await fetch(url, opt)).text(); } catch (e) { throw new Error("No connection to the server."); }
   let j; try { j = JSON.parse(t); } catch (e) { throw new Error("The server sent back a web page instead of data. If you just changed Code.gs, deploy it as a new version; otherwise try again in a moment."); }
@@ -177,51 +181,62 @@ function render() {
 async function saveRun() {
   err(""); if (!$("plat").value) return err("Choose the planting platform and crop first."); if (!$("dob").value) return err("Enter a planting date first.");
   try { const r = await post({...params(), action:"saveRun"}); RUN = r.runId; PLAN = r.plan; SAVED = true; try { DASH = await get({action:"dash"}); } catch (e) {} render(); roomUpdate(); $("runid").textContent = "Run " + RUN;
-    $("gate").classList.remove("hidden"); drawPicker(); draw(r.state); loadLive(); } catch (e) { err(e.message); }
+    $("gate").classList.remove("hidden"); draw(r.state); loadLive(); } catch (e) { err(e.message); }
 }
-function drawPicker() {
-  const by = {}; REF.filter(a => a.scope === "crop-wave").forEach(a => (by[a.phase] = by[a.phase] || []).push(a));
-  $("picker").innerHTML = Object.entries(by).map(([ph, l]) => `<details><summary>${ph}</summary><div class="chk">${l.map(a =>
-    `<label title="${a.description}"><input type="checkbox" value="${a.activity_id}"> ${a.activity_id} · ${a.activity}</label>`).join("")}</div></details>`).join("");
-}
-let WORKERS = [], OPEN = {};
+let WORKERS = [], OPEN = {}, ST = null;
 const when = s => { if (!s) return "n/a"; const d = new Date(s); return isNaN(d) ? String(s) : String(s).length > 10 ? d.toLocaleString() : fmt(String(s).slice(0, 10)); };
-const statusOf = a => a.overridden ? ["Overridden by manager", ""] : a.verified ? ["Verified", "ok"] : a.completed ? ["Completed · awaiting verification", ""] :
-  a.sessions && a.sessions.length ? ["In progress · " + a.sessions.map(s => s.by || "n/a").join(", "), "live"] : a.assignee ? ["Assigned · " + String(a.assignee).replace(/;\s*/g, ", "), ""] : ["Not started", ""];
-function detail(a) {
-  const gate = a.scope !== "crop-wave", ss = a.sessions || [];
-  const team = (a.assigneeIds || []).map(String), who = WORKERS.length ? `<fieldset class="team" data-who="${a.id}"><legend>Assign to: tick one or more workers</legend>${WORKERS.map(w => `<label><input type="checkbox" value="${esc_(w.id)}" ${team.includes(String(w.id)) ? "checked" : ""}> ${esc_(w.name)} (${esc_(w.role)})</label>`).join("")}</fieldset>`
-    : `<input data-who="${a.id}" placeholder="Worker name" value="${esc_(a.assignee)}">`;
-  return `<div class="k"><b>Assigned to:</b> ${a.assignee ? `${esc_(String(a.assignee).replace(/;\s*/g, ", "))}${a.due ? " · due " + when(a.due) : ""} · assigned ${when(a.assigneeAt)}${a.assignedBy ? " by " + esc_(a.assignedBy) : ""}` : "nobody yet"} · added to this run ${when(a.assignedAt)}</div>
-  <div class="r">${who}<input type="date" data-due="${a.id}" value="${esc_(a.due)}" aria-label="Due date"><button type="button" data-as="${a.id}">Save team</button></div>
-  <div class="k"><b>Live status:</b> ${ss.length ? ss.map(s => `${esc_(s.by || "n/a")} since ${when(s.since)} (wave ${esc_(s.wave)}${s.equipment ? ", " + esc_(s.equipment) : ""})`).join("; ") : "no live session open"}</div>
-  <div class="k"><b>Completed:</b> ${a.completed ? `${when(a.completedAt)} by ${esc_(a.completedBy || "n/a")}${a.count ? " · " + esc_(a.count) + " " + esc_(a.unit) : ""}` : "not yet"}</div>
-  <div class="k"><b>Verification:</b> ${a.verified ? `verified ${when(a.verifiedAt)}${a.verifiedBy ? " by " + esc_(a.verifiedBy) : ""}${a.verifyNotes ? " · notes: " + esc_(a.verifyNotes) : ""}` : a.completed ? "waiting for the manager" : "available once the activity is completed"}</div>
-  ${a.verified ? "" : `<div class="r"><input data-note="${a.id}" placeholder="Verification notes" size="30" ${a.completed ? "" : "disabled"}><button type="button" data-v="${a.id}" ${a.completed ? "" : "disabled"}>Manager verify</button></div>`}
-  ${!gate ? "" : a.overridden ? `<div class="note"><b>Overridden</b> by ${esc_(a.overrideBy)} on ${when(a.overrideAt)}: ${esc_(a.overrideReason)}</div>`
-    : `<div class="r"><input data-why="${a.id}" placeholder="Reason for override (required)" size="30"><button type="button" data-ov="${a.id}">Manager override</button></div><div class="k">Override clears this gate without the crew completing it. Needs the manager PIN and is recorded with your reason.</div>`}`;
+const nice = s => String(s == null ? "" : s).replace(/;\s*/g, ", ");
+const statusOf = a => a.overridden ? ["Overridden by manager", ""] : a.verified ? ["Verified", "ok"] : a.completed ? ["Done by worker · awaiting your verification", ""] :
+  a.sessions && a.sessions.length ? ["In progress · " + a.sessions.map(s => s.by || "n/a").join(", "), "live"] : a.assignee ? ["Assigned", ""] : ["Not assigned", ""];
+const teamBox = (key, sel) => WORKERS.length
+  ? `<fieldset class="team" data-team="${key}"><legend>Workers: tick one or more</legend>${WORKERS.map(w => `<label><input type="checkbox" value="${esc_(w.id)}" ${sel.includes(String(w.id)) ? "checked" : ""}> ${esc_(w.name)} <span class="pill">${esc_(w.role)}</span></label>`).join("")}</fieldset>`
+  : `<label>Worker name<input data-team="${key}" placeholder="Worker name"></label>`;
+const teamVal = el => !el ? {workerIds:[], name:""} : el.matches("fieldset") ? {workerIds:[...el.querySelectorAll("input:checked")].map(i => i.value), name:""} : {workerIds:[], name:el.value.trim()};
+function drawPicker(st) {   // activities still to be assigned: not yet in the run, or in the run with nobody on them
+  const had = {}; $("picker").querySelectorAll("input:checked").forEach(i => had[i.value] = 1);
+  const who = [...$("teampick").querySelectorAll("input:checked")].map(i => i.value), inRun = {}; st.activities.forEach(a => inRun[a.id] = a);
+  const by = {}; REF.filter(a => { const r = inRun[a.activity_id]; return r ? !r.assignee : a.scope === "crop-wave"; }).forEach(a => (by[a.phase || "Required gate activities"] = by[a.phase || "Required gate activities"] || []).push(a));
+  $("picker").innerHTML = Object.keys(by).length ? Object.entries(by).map(([ph, l]) => `<details ${l.some(a => had[a.activity_id] || a.scope !== "crop-wave") ? "open" : ""}><summary>${esc_(ph)} (${l.length})</summary><div class="plist">${l.map(a =>
+    `<label class="pa"><input type="checkbox" value="${esc_(a.activity_id)}" ${had[a.activity_id] ? "checked" : ""}><span><b>${esc_(a.activity_id)} · ${esc_(a.activity)}</b>${a.scope !== "crop-wave" ? ` <span class="pill">required gate</span>` : ""}<span class="d">${esc_(a.description || "")}</span></span></label>`).join("")}</div></details>`).join("")
+    : `<p class="k">Every activity in this run has been assigned.</p>`;
+  $("teampick").innerHTML = teamBox("new", who);
 }
+const histHtml = a => (a.history || []).map(h => `<div class="k">${when(h.at)} · ${h.kind === "REASSIGN" ? `<b>Reassigned from ${esc_(h.from)} to ${esc_(h.to)}</b>` : h.kind === "UNASSIGN" ? `Removed ${esc_(h.from)}` : `Assigned ${esc_(h.to)}`}${h.by ? " by " + esc_(h.by) : ""}</div>`).join("");
 async function refreshRun() { try { draw(await get({action:"run", runId:RUN})); } catch (e) { err(e.message); } }
+function actRow(a) {
+  const gate = a.scope !== "crop-wave", [stx, cls] = statusOf(a), reOpen = !!OPEN["re" + a.id], h = a.history || [], team = (a.assigneeIds || []).map(String);
+  return `<div class="ar ${gate ? "gatebox" : ""}">
+    <div><b>${esc_(a.id)} · ${esc_(a.name)}</b> <span class="badge ${cls}">${esc_(stx)}</span></div>
+    <div class="k">${esc_(a.phase || "")}${a.timing ? " · " + esc_(a.timing) : ""}${gate ? " · " + esc_(a.scope) + " gate" : ""}${a.locked ? " · locked until the gates are verified" : ""}</div>
+    ${a.description ? `<div class="desc">${esc_(a.description)}</div>` : ""}
+    <div class="k"><b>Team:</b> ${a.assignee ? esc_(nice(a.assignee)) + (a.due ? " · due " + when(a.due) : "") : "nobody yet, assign it from the list above"}</div>
+    ${a.sessions && a.sessions.length ? `<div class="k"><b>Working now:</b> ${a.sessions.map(s => `${esc_(s.by || "n/a")} since ${when(s.since)} (wave ${esc_(s.wave)})`).join("; ")}</div>` : ""}
+    ${a.completed ? `<div class="k"><b>Completed by worker:</b> ${when(a.completedAt)} by ${esc_(a.completedBy || "n/a")}${a.count ? " · " + esc_(a.count) + " " + esc_(a.unit) : ""}</div>` : ""}
+    ${a.verified ? `<div class="k"><b>Verified:</b> ${when(a.verifiedAt)}${a.verifiedBy ? " by " + esc_(a.verifiedBy) : ""}${a.verifyNotes ? " · " + esc_(a.verifyNotes) : ""}</div>` : ""}
+    ${a.overridden ? `<div class="note"><b>Overridden</b> by ${esc_(a.overrideBy)} on ${when(a.overrideAt)}: ${esc_(a.overrideReason)}</div>` : ""}
+    <div class="r">
+      ${a.assignee && !a.completed ? `<button type="button" data-re="${esc_(a.id)}">${reOpen ? "Cancel" : "Reassign"}</button>` : ""}
+      ${a.completed && !a.verified ? `<input data-note="${esc_(a.id)}" placeholder="Verification notes" size="26"><button type="button" data-v="${esc_(a.id)}">Verify</button><button type="button" class="alt" data-reopen="${esc_(a.id)}">Reopen</button>` : ""}
+    </div>
+    ${reOpen ? `<div class="pane">${teamBox("re-" + a.id, team)}<div class="r"><label>Due<input type="date" data-due="${esc_(a.id)}" value="${esc_(String(a.due || "").slice(0, 10))}"></label><button type="button" data-resave="${esc_(a.id)}">Save reassignment</button></div><div class="k">Untick the workers being replaced and tick the new ones. The change is recorded as from → to.</div></div>` : ""}
+    ${gate && !a.overridden && !a.verified ? `<details><summary>Manager override</summary><div class="r"><input data-why="${esc_(a.id)}" placeholder="Reason (required)" size="30"><button type="button" class="alt" data-ov="${esc_(a.id)}">Override gate</button></div></details>` : ""}
+    ${h.length ? `<details><summary>Assignment history (${h.length})</summary>${histHtml(a)}</details>` : ""}</div>`;
+}
+async function onActs(e) {
+  const b = e.target.closest("button"); if (!b) return; const box = $("myacts"), val = (k, id) => (box.querySelector(`[data-${k}="${id}"]`) || {}).value || "", d = b.dataset;
+  try {
+    if (d.re) { OPEN["re" + d.re] = !OPEN["re" + d.re]; return draw(ST); }
+    if (d.resave) { const t = teamVal(box.querySelector(`[data-team="re-${d.resave}"]`)); if (!t.workerIds.length && !t.name) return err("Tick at least one worker.");
+      OPEN["re" + d.resave] = false; draw(await post({action:"assignTo", runId:RUN, activityId:d.resave, workerIds:t.workerIds, name:t.name, due:val("due", d.resave), user:$("user").value})); return err(""); }
+    if (d.v) { draw(await post({action:"verify", runId:RUN, activityId:d.v, pin:$("pin").value, user:$("user").value, notes:val("note", d.v)})); $("pin").value = ""; return err(""); }
+    if (d.reopen) { if (!confirm("Send this activity back as not done? Its verification is cleared; the worker's log entry stays.")) return;
+      draw(await post({action:"reopen", runId:RUN, activityId:d.reopen, pin:$("pin").value, user:$("user").value})); $("pin").value = ""; return err(""); }
+    if (d.ov) { draw(await post({action:"override", runId:RUN, activityId:d.ov, pin:$("pin").value, reason:val("why", d.ov), user:$("user").value})); $("pin").value = ""; return err(""); }
+  } catch (x) { err(x.message); }
+}
 function draw(st) {
-  $("myacts").innerHTML = st.activities.map(a => { const gate = a.scope !== "crop-wave", [stx, cls] = statusOf(a), open = !!OPEN[a.id];
-    return `<div class="act ${gate ? "gatebox" : ""}"><input type="checkbox" data-id="${a.id}" ${a.completed ? "checked" : ""} ${a.locked ? "disabled" : ""} aria-label="Complete ${esc_(a.name)}">
-    <div><button type="button" class="lnk" data-x="${a.id}" aria-expanded="${open}">${open ? "▾" : "▸"} ${a.id} · ${esc_(a.name)}</button> <span class="pill">${esc_(a.timing)}${gate ? " · " + a.scope + " gate" : ""}${a.locked ? " · locked until gates verified" : ""}</span> <span class="badge ${cls}">${esc_(stx)}</span></div>
-    <div class="r">${a.requiresCount ? `<input type="number" min="0" data-c="${a.id}" value="${a.count || ""}" placeholder="Qty"><input class="u" data-u="${a.id}" value="${a.unit || ""}" placeholder="Unit">` : ""}
-    ${a.locked ? "" : `<button data-s="${a.id}">Start session</button>`}${a.completed ? (a.verified ? `<span class="badge ok">Verified</span>` : `<button data-v="${a.id}">Manager verify</button>`) : ""}</div>
-    <div class="det ${open ? "" : "hidden"}" style="grid-column:2">${detail(a)}</div></div>`; }).join("");
-  const box = $("myacts"), val = sel => (box.querySelector(sel) || {}).value || "";
-  box.querySelectorAll("[data-x]").forEach(b => b.onclick = () => { const id = b.dataset.x, d = b.closest(".act").querySelector(".det"); OPEN[id] = !OPEN[id]; d.classList.toggle("hidden", !OPEN[id]); b.setAttribute("aria-expanded", OPEN[id]); b.textContent = (OPEN[id] ? "▾" : "▸") + b.textContent.slice(1); });
-  box.querySelectorAll("input[type=checkbox][data-id]").forEach(i => i.onchange = async () => {
-    const id = i.dataset.id, c = document.querySelector(`[data-c="${id}"]`), u = document.querySelector(`[data-u="${id}"]`);
-    try { draw(await post({action:"complete", runId:RUN, activityId:id, completed:i.checked, count:c ? c.value : "", unit:u ? u.value : "", user:$("user").value})); err(""); } catch (e) { i.checked = !i.checked; err(e.message); } });
-  box.querySelectorAll("[data-v]").forEach(b => b.onclick = async () => { const id = b.dataset.v;
-    try { draw(await post({action:"verify", runId:RUN, activityId:id, pin:$("pin").value, user:$("user").value, notes:val(`[data-note="${id}"]`)})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
-  box.querySelectorAll("[data-s]").forEach(b => b.onclick = async () => {
-    try { await post({action:"startSession", runId:RUN, activityId:b.dataset.s, wave:$("swave").value, user:$("user").value}); err(""); await refreshRun(); loadLive(); } catch (e) { err(e.message); } });
-  box.querySelectorAll("[data-as]").forEach(b => b.onclick = async () => { const id = b.dataset.as, f = box.querySelector(`[data-who="${id}"]`), ids = WORKERS.length ? [...f.querySelectorAll("input:checked")].map(i => i.value) : [];
-    try { draw(await post({action:"assignTo", runId:RUN, activityId:id, workerIds:ids, name:WORKERS.length ? "" : f.value, due:val(`[data-due="${id}"]`), user:$("user").value})); err(""); } catch (e) { err(e.message); } });
-  box.querySelectorAll("[data-ov]").forEach(b => b.onclick = async () => { const id = b.dataset.ov;
-    try { draw(await post({action:"override", runId:RUN, activityId:id, pin:$("pin").value, reason:val(`[data-why="${id}"]`), user:$("user").value})); $("pin").value = ""; err(""); } catch (e) { err(e.message); } });
+  ST = st; drawPicker(st);
+  $("myacts").innerHTML = st.activities.length ? st.activities.map(actRow).join("") : `<p class="k">No activities in this run yet.</p>`;
   $("st").textContent = st.notApplicable ? "No propagation (direct-seeded)" : st.ready ? "Ready" : "Not ready"; $("st").className = "badge" + (st.ready || st.notApplicable ? " ok" : "");
 }
 
@@ -232,7 +247,7 @@ async function loadLive() {
     $("sessions").innerHTML = s.sessions.length ? s.sessions.map(x => `<div class="act" data-sid="${x.session_id}"><span></span><div><b>${x.activity_id} · wave ${x.wave}</b> <span class="pill">started ${new Date(x.started_at).toLocaleString()} by ${x.started_by || "n/a"} · ${x.location}</span></div>
       <div class="r" style="grid-column:1/-1">${F_("equipment", "Equipment", x.equipment)}${F_("soilMoisture", "Soil moisture", x.soil_moisture)}${F_("weather", "Weather", x.weather)}${F_("tempF", "Temp °F", x.temp_f)}${F_("notes", "Notes", x.notes)}<button data-u="${x.session_id}">Update</button></div>
       <div class="r" style="grid-column:1/-1">${F_("laborHours", "Labor hours")}${F_("workers", "Workers")}${F_("inputs", "Inputs applied")}${F_("quantity", "Quantity")}${F_("unit", "Unit")}${F_("yieldActual", "Yield")}${F_("yieldUnit", "Yield unit")}
-      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-f="completed" checked style="min-height:0;width:18px;height:18px"> Completed</label><button data-c="${x.session_id}">Close and log</button></div></div>`).join("") : `<p class="k">No open sessions.</p>`;
+      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-f="completed" style="min-height:0;width:18px;height:18px"> Mark activity completed</label><button data-c="${x.session_id}">Close and log</button></div></div>`).join("") : `<p class="k">No open sessions.</p>`;
     const val = (box, k) => { const e = box.querySelector(`[data-f="${k}"]`); return e.type === "checkbox" ? e.checked : e.value; };
     $("sessions").querySelectorAll("[data-u]").forEach(b => b.onclick = async () => { const box = b.closest("[data-sid]");
       try { await post({action:"updateSession", sessionId:b.dataset.u, equipment:val(box, "equipment"), notes:val(box, "notes"), conditions:{soilMoisture:val(box, "soilMoisture"), weather:val(box, "weather"), tempF:val(box, "tempF")}}); err(""); } catch (e) { err(e.message); } });
@@ -243,11 +258,13 @@ async function loadLive() {
   } catch (e) { err(e.message); }
 }
 async function assign() {
-  const ids = [...$("picker").querySelectorAll("input:checked")].map(i => i.value); if (!ids.length) return;
-  try { draw(await post({action:"assign", runId:RUN, activityIds:ids})); $("picker").querySelectorAll("input").forEach(i => i.checked = false); } catch (e) { err(e.message); }
+  const ids = [...$("picker").querySelectorAll("input:checked")].map(i => i.value); if (!ids.length) return err("Tick at least one activity.");
+  const t = teamVal($("teampick").firstElementChild); if (!t.workerIds.length && !t.name) return err("Tick at least one worker.");
+  try { const st = await post({action:"assign", runId:RUN, activityIds:ids, workerIds:t.workerIds, name:t.name, due:$("due").value, user:$("user").value});
+    $("teampick").innerHTML = ""; $("due").value = ""; draw(st); err(""); } catch (e) { err(e.message); }
 }
 $("pf").onchange = onPf; $("crop").onchange = onCrop; $("plat").onchange = onPlat; $("pdate").onchange = () => { if ($("pdate").value) { $("dob").value = $("pdate").value; calc(); } };
 ["dob","waves","gap","lead"].forEach(i => $(i).addEventListener("input", calc));
 $("rday").addEventListener("input", () => { RMANUAL = true; roomUpdate(); }); $("rsq").addEventListener("input", roomUpdate);
-$("save").onclick = saveRun; $("assign").onclick = assign; init();
+$("save").onclick = saveRun; $("assign").onclick = assign; $("myacts").onclick = onActs; init();
 </script></body></html>
