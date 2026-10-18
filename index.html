@@ -41,9 +41,13 @@ h3{font-size:15px;margin:16px 0 6px}.ar{border:1px solid var(--line);border-radi
 <label>Waves<input type="number" id="waves" min="1" max="12" placeholder="from plan"></label>
 <label>Days between waves<input type="number" id="gap" min="1" placeholder="from plan"></label>
 <label>Days before DOB<input type="number" id="lead" min="0" placeholder="from parameters"></label>
+<label>Reason for extra waves (optional)<input id="reason" placeholder="e.g. shortage, new order"></label>
 </div><div id="planinfo"></div><div id="win"></div><div class="row"><button id="save">Create propagation run</button><span class="k" id="runid"></span></div></section>
 <section class="card"><h2>Propagation room · Bay 3 benches</h2><div class="row"><label>Day shown<input type="date" id="rday"></label><label>Sq ft per tray (estimate)<input type="number" id="rsq" step="0.05" min="0.5" value="1.55"></label></div><div id="roomv"></div>
 <p class="k">Bay 3 bench limit is 800 sq ft (Infra_Field). The workbook's own tray figures work out to about 1.5 to 2.3 sq ft per tray, so change the footprint to match your trays. Green = saved runs, orange = the plan you are drafting.</p></section>
+<section class="card"><h2>Unplanned waves added to the plan</h2>
+<p class="k">Every wave saved outside the plan is written to Planting_Plan (plan_type ADDITIONAL) with its run, reason and who added it. Use the counts below when you build next year's plan.</p>
+<div class="table" id="extras"><p class="k">Loading…</p></div></section>
 <section class="card"><h2>Assignments</h2>
 <div class="row"><label>Worker<select id="afw"><option value="">All workers</option></select></label><label>Show<select id="afs"><option value="">All runs</option><option value="this">Current run only</option></select></label><button id="arf" class="alt" type="button">Refresh</button></div>
 <h3>Who has what now</h3><div class="table" id="acur"><p class="k">Loading…</p></div>
@@ -124,7 +128,7 @@ async function init() {
   try { WORKERS = (await get({action:"workers"})).workers; } catch (e) {}
   try { DASH = await get({action:"dash"}); } catch (e) { err("Oregon windows and room occupancy need the latest Code.gs deployed (" + e.message + ")."); }
   $("rday").value = new Date().toISOString().slice(0, 10); roomUpdate();
-  $("pf").innerHTML = `<option value="">Choose platform…</option><option value="F">Field</option><option value="G">Greenhouse</option>`; onPf(); loadAssign();
+  $("pf").innerHTML = `<option value="">Choose platform…</option><option value="F">Field</option><option value="G">Greenhouse</option>`; onPf(); loadAssign(); loadExtras();
 }
 function onPf() { // crops offered = those the rulebook allows on the chosen platform
   const p = $("pf").value, keep = $("crop").value, list = p ? META.filter(c => c.platforms.includes(p)) : [];
@@ -139,20 +143,21 @@ async function onCrop() {
   $("plat").innerHTML = c.platforms.filter(p => p === $("pf").value).map(p => `<option value="${p}">${p === "F" ? "Field" : "Greenhouse"}${loc(p) ? " · " + loc(p) : ""}</option>`).join(""); onPlat();
 }
 let PINFO = null;
+function fillDates(d) { $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.additional ? "Unplanned · " : ""}${esc_(x.label)}</option>`).join(""); }
 const addD = (s, n) => { const x = new Date(s + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 function showInfo() {
   const el = $("planinfo"), d = PINFO; if (!d || !$("plat").value) { el.innerHTML = ""; return; }
   const gap = +$("gap").value || d.gapDays, nxt = d.lastScheduled ? addD(d.lastScheduled, gap) : "";
-  el.innerHTML = `<div class="note"><b>Plan for this crop:</b> ${d.dates.length} planting date${d.dates.length === 1 ? "" : "s"}${d.lastPlanned ? ", the last on " + fmt(d.lastPlanned) : ""}.
-    ${d.savedRuns ? ` Extra runs already saved: ${d.savedRuns}, running to ${fmt(d.lastSaved)}.` : ""}
-    To add waves, enter the number of waves and a DOB. ${nxt ? `<button type="button" id="afterlast" style="min-height:30px;padding:2px 8px;margin:2px">Start after the last scheduled wave (${fmt(nxt)})</button>` : ""}</div>`;
+  el.innerHTML = `<div class="note"><b>Plan for this crop:</b> ${d.plannedCount} planned date${d.plannedCount === 1 ? "" : "s"}${d.lastPlanned ? ", the last on " + fmt(d.lastPlanned) : ""}.
+    ${d.additionalCount ? ` Unplanned waves added so far: ${d.additionalCount}.` : ""}${d.savedRuns && !d.additionalCount ? ` Earlier saved runs: ${d.savedRuns}.` : ""}
+    Waves outside the plan are recorded in Planting_Plan as unplanned when you save. ${nxt ? `<button type="button" id="afterlast" style="min-height:30px;padding:2px 8px;margin:2px">Start after the last scheduled wave (${fmt(nxt)})</button>` : ""}</div>`;
   const b = $("afterlast"); if (b) b.onclick = () => { $("dob").value = nxt; calc(); };
 }
 async function onPlat() {
   $("waves").value = $("gap").value = $("lead").value = "";
   if (!$("plat").value) { $("pdate").innerHTML = `<option value="">Choose a plan date…</option>`; PDY = null; PINFO = null; showInfo(); showWin(); return calc(); }
   try { const d = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value});
-    $("pdate").innerHTML = `<option value="">Choose a plan date…</option>` + d.dates.map(x => `<option value="${x.date}">${fmt(x.date)} · ${x.label}</option>`).join("");
+    fillDates(d);
     PINFO = d; showInfo();
     const yc = {}; d.dates.forEach(x => { const y = x.date.slice(0, 4); yc[y] = (yc[y] || 0) + 1; }); PDY = +Object.keys(yc).sort((a, b) => yc[b] - yc[a])[0] || null; } catch (e) { err(e.message); }
   showWin();
@@ -191,12 +196,18 @@ function render() {
   ${w1.phases.length ? `<section class="card"><h2>Propagation phases (wave 1)</h2><div class="table"><table><tr><th>Phase</th><th>Days</th><th>Starts</th><th>Ends</th></tr>
     ${w1.phases.map(p => `<tr><td>${p.phase}</td><td>${p.days}</td><td>${fmt(p.start)}</td><td>${fmt(p.end)}</td></tr>`).join("")}</table></div></section>` : ""}
   <section class="card"><h2>Wave schedule${s.runType === "ADDITIONAL" ? " · additional waves" : ""}</h2><div class="table"><table><tr><th>Wave</th><th>Sow by</th><th>Plant (DOB)</th><th>Trays</th><th>Material</th><th>Oregon window</th><th>Plan status</th></tr>
-  ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td><td>${wc(w.plant)}</td><td>${w.savedRun ? "Saved · " + esc_(w.savedRun) : w.inPlan ? "In plan" : "<b>Additional</b>"}</td></tr>`).join("")}</table></div></section>`;
+  ${s.schedule.map(w => `<tr><td>${w.wave}</td><td>${fmt(w.sow)}</td><td>${fmt(w.plant)}</td><td>${w.trays}</td><td>${w.material ? n(w.material) : "bulk"}</td><td>${wc(w.plant)}</td><td>${w.inPlan ? "In plan" : w.extra ? "<b>Unplanned · added to plan</b>" : "<b>Unplanned · will be added when saved</b>"}</td></tr>`).join("")}</table></div></section>`;
 }
 async function saveRun() {
   err(""); if (!$("plat").value) return err("Choose the planting platform and crop first."); if (!$("dob").value) return err("Enter a planting date first.");
-  try { const r = await post({...params(), action:"saveRun"}); RUN = r.runId; PLAN = r.plan; SAVED = true; try { DASH = await get({action:"dash"}); } catch (e) {} render(); roomUpdate(); $("runid").textContent = "Run " + RUN;
+  try { const r = await post({...params(), action:"saveRun", reason:$("reason").value, user:$("user").value}); RUN = r.runId; PLAN = r.plan; SAVED = true; try { DASH = await get({action:"dash"}); } catch (e) {} try { PINFO = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value}); fillDates(PINFO); showInfo(); } catch (e) {} loadExtras(); render(); roomUpdate(); $("runid").textContent = "Run " + RUN;
     $("gate").classList.remove("hidden"); draw(r.state); loadLive(); } catch (e) { err(e.message); }
+}
+async function loadExtras() {
+  let d; try { d = await get({action:"extras"}); } catch (e) { $("extras").innerHTML = `<p class="k">Could not load: ${esc_(e.message)}. Deploy the latest Code_pro.gs.</p>`; return; }
+  const pf = p => p === "F" ? "Field" : p === "G" ? "Greenhouse" : esc_(p);
+  $("extras").innerHTML = d.extras.length ? `<table><tr><th>Crop</th><th>Platform</th><th>Unplanned waves</th></tr>${d.summary.map(s => `<tr><td>${esc_(s.cropName)} (${esc_(s.crop)})</td><td>${pf(s.platform)}</td><td>${s.waves}</td></tr>`).join("")}</table>
+    <table><tr><th>Planting date</th><th>Crop</th><th>Platform</th><th>Run</th><th>Reason</th><th>Added by</th></tr>${d.extras.map(x => `<tr><td>${fmt(x.date)}</td><td>${esc_(x.crop)}</td><td>${pf(x.platform)}</td><td>${esc_(x.runId)}</td><td>${esc_(x.reason)}</td><td>${esc_(x.addedBy)}</td></tr>`).join("")}</table>` : `<p class="k">No unplanned waves yet.</p>`;
 }
 let WORKERS = [], OPEN = {}, ST = null, AS = null;
 async function loadAssign() {
