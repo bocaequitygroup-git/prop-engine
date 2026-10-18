@@ -200,8 +200,16 @@ function render() {
 }
 async function saveRun() {
   err(""); if (!$("plat").value) return err("Choose the planting platform and crop first."); if (!$("dob").value) return err("Enter a planting date first.");
-  try { const r = await post({...params(), action:"saveRun", reason:$("reason").value, user:$("user").value}); RUN = r.runId; PLAN = r.plan; SAVED = true; try { DASH = await get({action:"dash"}); } catch (e) {} try { PINFO = await get({action:"planDates", crop:$("crop").value, platform:$("plat").value}); fillDates(PINFO); showInfo(); } catch (e) {} loadExtras(); render(); roomUpdate(); $("runid").textContent = "Run " + RUN;
-    $("gate").classList.remove("hidden"); draw(r.state); loadLive(); } catch (e) { err(e.message); }
+  const btn = $("save"), label = btn.textContent, t0 = Date.now(); btn.disabled = true; btn.textContent = "Saving…";
+  const tick = setInterval(() => { $("runid").textContent = "Saving the run… " + Math.round((Date.now() - t0) / 1000) + " s (the Google script can take 10 to 20 s)"; }, 1000);
+  $("runid").textContent = "Saving the run…";
+  try { const r = await post({...params(), action:"saveRun", reason:$("reason").value, user:$("user").value}); RUN = r.runId; PLAN = r.plan; SAVED = true;
+    render(); roomUpdate(); $("runid").textContent = "Run " + RUN + " saved"; $("gate").classList.remove("hidden"); draw(r.state);   // show the result now; refresh the rest in the background
+    const c = $("crop").value, pl = $("plat").value;
+    get({action:"dash"}).then(d => { DASH = d; roomUpdate(); }).catch(() => {});
+    get({action:"planDates", crop:c, platform:pl}).then(d => { PINFO = d; fillDates(d); showInfo(); }).catch(() => {});
+    loadExtras(); loadLive(); loadAssign();
+  } catch (e) { err(e.message); $("runid").textContent = ""; } finally { clearInterval(tick); btn.disabled = false; btn.textContent = label; }
 }
 async function loadExtras() {
   let d; try { d = await get({action:"extras"}); } catch (e) { $("extras").innerHTML = `<p class="k">Could not load: ${esc_(e.message)}. Deploy the latest Code_pro.gs.</p>`; return; }
