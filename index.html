@@ -83,7 +83,7 @@ details>summary{cursor:pointer;font-weight:700;min-height:32px}
 "use strict";
 /* ---------- config + helpers ---------- */
 const API_URL = "https://script.google.com/macros/s/AKfycbz7qyhFT5BRUpiqLCnjtT8gRX-UQ-I0lQhF__H6dgCU_Rql2WFOMuNm-YLXazi0Zrir_g/exec";
-const POLL_MS = 60000, IDLE_MS = 15 * 60000, SCOUT = ["ACT-303", "ACT-403"], HORIZON = 30;
+const POLL_MS = 60000, IDLE_MS = 0,   /* 0 = never sign out for inactivity (the server still ends a session after 16 hours). For production set e.g. 30 * 60000. */  SCOUT = ["ACT-303", "ACT-403"], HORIZON = 30;
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const LS = {get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
@@ -339,7 +339,7 @@ document.addEventListener("click", e => { if (e.target.closest("[data-addact]"))
 const ADDACT_REFRESH = () => load(true);
 document.documentElement.dataset.theme = LS.get("pd_theme") === "night" ? "night" : "sun";
 setInterval(() => { if (!document.hidden && !(MODE === "offline" && FORCED)) load(true); }, POLL_MS);
-setInterval(() => { if (M && Date.now() - LAST > IDLE_MS) signOut("Manager sign-in ended after 15 minutes without use."); }, 30000);
+setInterval(() => { if (M && IDLE_MS > 0 && Date.now() - LAST > IDLE_MS) signOut("Manager sign-in ended after 15 minutes without use."); }, 30000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !(MODE === "offline" && FORCED) && Date.now() - Date.parse(SNAP || 0) > 30000) load(true); });
 authBar(); load();
 </script></body></html>
