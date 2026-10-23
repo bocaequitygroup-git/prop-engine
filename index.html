@@ -71,7 +71,7 @@ details>summary{cursor:pointer;font-weight:700;min-height:32px}
 <label>Description <textarea id="aad" maxlength="300" placeholder="What the worker does, in a sentence or two"></textarea></label>
 <p class="k" style="margin:0">The system fills in the ID, group, timing and scope, and adds it to every run.</p>
 <details><summary>More options (optional)</summary>
-<label>Group <select id="aap"><option value="">Automatic (Phase 7: Added activities)</option><option value="Phase 1: Pre-sowing and media preparation">Phase 1: Pre-sowing and media preparation</option><option value="Phase 2: Seeding and batching">Phase 2: Seeding and batching</option><option value="Phase 3: Germination and early emergence">Phase 3: Germination and early emergence</option><option value="Phase 4: Grow-out and crop maintenance">Phase 4: Grow-out and crop maintenance</option><option value="Phase 5: Hardening off and pre-delivery">Phase 5: Hardening off and pre-delivery</option><option value="Phase 6: Fulfillment and delivery">Phase 6: Fulfillment and delivery</option></select></label>
+<label>Group <select id="aap"><option value="">Automatic (Added activities)</option><option value="Phase 1: Pre-sowing and media preparation">Phase 1: Pre-sowing and media preparation</option><option value="Phase 2: Seeding and batching">Phase 2: Seeding and batching</option><option value="Phase 3: Germination and early emergence">Phase 3: Germination and early emergence</option><option value="Phase 4: Grow-out and crop maintenance">Phase 4: Grow-out and crop maintenance</option><option value="Phase 5: Hardening off and pre-delivery">Phase 5: Hardening off and pre-delivery</option><option value="Phase 6: Fulfillment and delivery">Phase 6: Fulfillment and delivery</option></select></label>
 <label class="chk"><input type="checkbox" id="aac"> Workers record a quantity when they finish</label>
 </details>
 <div id="aae" class="aae hidden" role="alert"></div>
@@ -124,7 +124,7 @@ async function load(quiet) {
   } catch (e) {
     if (/sign.?in required|^AUTH|not signed in|session (ended|expired)|invalid token/i.test(e.message)) {   // data is behind the manager sign-in: ask for it instead of showing an error
       if (M) { M = null; LS.set("pd_session", null); }
-      NEED = true; D = null; SNAP = null; ERR = ""; SYNCING = false; authBar();
+      NEED = true; D = null; SNAP = null; ERR = ""; SYNCING = false; MODE = "live"; FORCED = false; authBar();   // the server answered, so we are online: signing in must be allowed
       if (!ASKED) { ASKED = true; openLogin(); }
       render(); return;
     }
@@ -159,7 +159,7 @@ function openLogin() { $("uid").value = ""; $("upin").value = ""; loginErr(""); 
 function closeLogin() { $("login").classList.add("hidden"); $("upin").value = ""; }
 async function signIn() {
   const u = $("uid").value.trim(), p = $("upin").value; if (!u || !p) return loginErr("Enter your user name and PIN.");
-  if (MODE !== "live") return loginErr("Go live first: signing in needs the server.");
+  if (MODE !== "live") { if (FORCED) return loginErr("Tap Go live first: you chose the saved snapshot."); MODE = "live"; }   // not forced: just try the server
   const b = $("bIn"); b.disabled = true; b.textContent = "Signing in…"; loginErr("");
   try { const r = await post({action:"boardLogin", user:u, pin:p, device:navigator.userAgent});
     M = {token:r.token, name:r.user.name, role:r.user.role, id:r.user.workerId}; LS.set("pd_session", M); LAST = Date.now(); closeLogin(); NEED = false; authBar(); render(); toast("Signed in: " + M.name); load(true); }
